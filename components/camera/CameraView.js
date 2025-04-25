@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StatusBar } from 'react-native';
-import { Camera } from 'expo-camera';
+import { View, Text, StatusBar, Platform } from 'react-native';
+import { CameraView as ExpoCameraView } from 'expo-camera';
 import WebCamera from './WebCamera';
 import { styles } from '../../styles';
-import { isWeb, CAMERA_TYPE } from '../../constants';
+import { isWeb } from '../../constants';
 
 const CameraView = ({ 
   dimensions, 
@@ -28,11 +28,12 @@ const CameraView = ({
     left: (dimensions.width - guideSize) / 2,
   };
 
-  // Camera props - change to horizontal flip (scaleX instead of scaleY)
+  // Camera props - horizontal flip with scaleX
   const cameraProps = {
     style: [
       cameraStyle,
-      { transform: [{ scaleX: -1 }] } // Flip camera horizontally
+      // Only apply horizontal flip on web - can cause issues on Android
+      isWeb ? { transform: [{ scaleX: -1 }] } : {}
     ],
     onCameraReady: () => {
       console.log('Camera is ready');
@@ -41,38 +42,31 @@ const CameraView = ({
     onMountError: (error) => {
       console.error('Camera mount error:', error);
       setCameraError(error);
-    }
+    },
+    ref: cameraRef,
   };
-
-  // Only add ref to native Camera component, not to WebCamera
-  if (!isWeb) {
-    cameraProps.ref = cameraRef;
-  }
 
   // Add platform-specific props
   if (!isWeb) {
-    // Native platforms - explicitly use front camera
-    if (Camera.Constants && Camera.Constants.Type) {
-      cameraProps.type = Camera.Constants.Type.front;
-    }
-    cameraProps.ratio = "16:9";
+    // For Android/iOS: Use correct props for the CameraView component
+    cameraProps.device = "front";
+    
+    // Add error handler
+    cameraProps.onError = (error) => {
+      setCameraError(error);
+    };
   }
 
   try {
-    // On web, we'll use our custom WebCamera component
-    const CameraComponent = isWeb ? WebCamera : Camera;
-    
-    // Set up the appropriate ref based on platform
-    if (isWeb) {
-      cameraRef.current = WebCamera;
-    }
+    // Select the appropriate component based on platform
+    const CameraComponent = isWeb ? WebCamera : ExpoCameraView;
 
     return (
       <CameraComponent {...cameraProps}>
         <View style={[styles.overlay, { transform: [{ scaleX: -1 }] }]}>
           {/* Capture guide / crosshair to show the square center area */}
           <View 
-            style={[
+            style={[ 
               styles.captureGuide, 
               { 
                 width: guideSize, 
@@ -83,15 +77,8 @@ const CameraView = ({
             ]} 
           />
           
-          {/* Capturing indicator */}
-          {isCapturing && (
-            <View style={styles.recordingIndicator}>
-              <Text style={styles.recordingText}>Capturing</Text>
-            </View>
-          )}
-          
-          {/* Display camera initialization message */}
-          {!cameraReady && (
+          {/* Only show initialization message, remove all capturing indicators */}
+          {!cameraReady && Platform.OS !== 'android' && (
             <View style={styles.initializing}>
               <Text style={styles.initializingText}>Initializing camera...</Text>
             </View>
@@ -103,7 +90,7 @@ const CameraView = ({
   } catch (error) {
     console.error('Error rendering camera:', error);
     return (
-      <View style={[styles.errorContainer, {position: 'relative', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#000'}]}>
+      <View style={[styles.errorContainer, { position: 'relative', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
         <Text style={styles.errorText}>
           Camera Error: {error.message || 'Failed to render camera component'}
         </Text>

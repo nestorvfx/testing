@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform } from 'react-native';
+import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet } from 'react-native';
 import { Camera } from 'expo-camera';
 
 // Components
@@ -10,6 +10,9 @@ import ExpandedCard from './components/cards/ExpandedCard';
 import ErrorView from './components/ui/ErrorView';
 import { LoadingPermissionView, MediaPermissionView, DeniedPermissionView } from './components/ui/PermissionViews';
 import AnalyzeButton from './components/ui/AnalyzeButton';
+import DeepAnalysisButton from './components/ui/DeepAnalysisButton';
+import DeepAnalysisDialog from './components/ui/DeepAnalysisDialog';
+import DeepAnalysisResults from './components/ui/DeepAnalysisResults';
 
 // Hooks
 import { useCamera } from './hooks/useCamera';
@@ -17,7 +20,7 @@ import { usePermissions } from './hooks/usePermissions';
 import { useCardStack } from './hooks/useCardStack';
 
 // Services
-import { analyzeImages } from './services/perplexityService';
+import { analyzeImages, performDeepAnalysis } from './services/perplexityService';
 
 // Styles and constants
 import { styles } from './styles';
@@ -88,15 +91,60 @@ export default function App() {
     }
   };
 
-  // Permission related views
-  if (hasPermission === null) {
-    return <LoadingPermissionView />;
-  }
+  // Add state for deep analysis
+  const [isDeepAnalysisDialogVisible, setIsDeepAnalysisDialogVisible] = useState(false);
+  const [isPerformingDeepAnalysis, setIsPerformingDeepAnalysis] = useState(false);
+  const [deepAnalysisResults, setDeepAnalysisResults] = useState(null);
+  const [isDeepAnalysisResultsVisible, setIsDeepAnalysisResultsVisible] = useState(false);
   
-  if (mediaPermissionOnly && !isWeb) {
-    return <MediaPermissionView requestMediaPermissionOnly={requestMediaPermissionOnly} />;
-  }
+  // Function to handle deep analysis
+  const handleDeepAnalysis = async (customPrompt) => {
+    if (captures.length === 0) return;
+    
+    setIsDeepAnalysisDialogVisible(false);
+    setIsPerformingDeepAnalysis(true);
+    
+    try {
+      const results = await performDeepAnalysis(captures, customPrompt);
+      setDeepAnalysisResults(results);
+      setIsDeepAnalysisResultsVisible(true);
+    } catch (error) {
+      console.error('Deep analysis error:', error);
+      // Handle error - could show an error toast here
+    } finally {
+      setIsPerformingDeepAnalysis(false);
+    }
+  };
   
+  // Function to toggle deep analysis dialog
+  const toggleDeepAnalysisDialog = () => {
+    // If we already have results, show them instead of the dialog
+    if (deepAnalysisResults && !isDeepAnalysisResultsVisible) {
+      setIsDeepAnalysisResultsVisible(true);
+    } else if (!deepAnalysisResults) {
+      setIsDeepAnalysisDialogVisible(!isDeepAnalysisDialogVisible);
+    }
+  };
+
+  // Add this new function at the app component level
+  const onScreenTap = (event) => {
+    if (Platform.OS === 'android') {
+      const { locationX, locationY } = event.nativeEvent;
+      console.log(`Screen tapped at X: ${locationX}, Y: ${locationY}`);
+      
+      // Check if tap is in the bottom center area (where capture button should be)
+      const bottomThird = dimensions.height * 2/3;
+      const leftThird = dimensions.width * 1/3;
+      const rightThird = dimensions.width * 2/3;
+      
+      if (locationY > bottomThird && locationX > leftThird && locationX < rightThird) {
+        console.log('Tap detected in capture button area!');
+        handleCapturePhoto();
+      }
+    }
+  };
+
+  // Permission related views - only show if we've definitively determined no permission
   if (hasPermission === false) {
     return (
       <DeniedPermissionView 
@@ -105,10 +153,16 @@ export default function App() {
       />
     );
   }
+  
+  // Skip all other permission checks to avoid flashes - just show the main UI
+  // The camera component will handle showing its own errors if needed
 
   // Main app UI
   return (
-    <View style={styles.container} onTouchStart={handleOutsideClick}>
+    <View 
+      style={styles.container} 
+      onTouchStart={handleOutsideClick}
+    >
       {/* Camera */}
       <CameraView 
         dimensions={dimensions}
@@ -119,13 +173,14 @@ export default function App() {
         isCapturing={isCapturing}
       />
       
-      {/* Analyze button */}
-      {captures.length > 0 && (
-        <AnalyzeButton 
-          onPress={handleAnalyzeImages}
-          isAnalyzing={isAnalyzing}
-          unanalyzedCount={unanalyzedCount}
-        />
+      {/* Centered capture button */}
+      {!isCardsExpanded && (
+          <CaptureButton 
+            onPress={handleCapturePhoto}
+            isCapturing={isCapturing}
+            disabled={!cameraReady}
+            captureButtonScale={captureButtonScale}
+          />
       )}
       
       {/* Expanded card view */}
@@ -138,27 +193,65 @@ export default function App() {
         />
       )}
       
+      {/* Add debug info for expanded card (will be removed in production) */}
+      {Platform.OS === 'android' && (
+        <View style={{ 
+          position: 'absolute', 
+          top: 40, 
+          right: 10, 
+          zIndex: 9999,
+          backgroundColor: 'transparent'
+        }}>
+          <Text style={{ color: 'transparent', fontSize: 1 }}>
+            {`Card expanded: ${expandedCardIndex !== null}`}
+          </Text>
+        </View>
+      )}
+      
       {/* Card group (compact or expanded) */}
       <CardGroup 
         isCardsExpanded={isCardsExpanded}
-        cardGroupStyles={cardGroupStyles}
         scrollViewRef={scrollViewRef}
         captures={captures}
-        scrollCards={scrollCards}
         toggleCardGroup={toggleCardGroup}
         expandCard={expandCard}
-        panResponder={panResponder}
-        cardGroupBackgroundOpacity={cardGroupBackgroundOpacity}
-        expandAnimation={expandAnimation}
+        dimensions={dimensions} // Pass dimensions down
       />
       
-      {/* Capture button */}
-      <CaptureButton 
-        onPress={handleCapturePhoto}
-        isCapturing={isCapturing}
-        disabled={!cameraReady}
-        captureButtonScale={captureButtonScale}
+      {/* Analyze button */}
+      {captures.length > 0 && (
+        <AnalyzeButton 
+          onPress={handleAnalyzeImages}
+          isAnalyzing={isAnalyzing}
+          unanalyzedCount={unanalyzedCount}
+        />
+      )}
+      
+      {/* Deep Analysis Button - hide when cards are expanded */}
+      {captures.length > 0 && !isCardsExpanded && (
+        <DeepAnalysisButton 
+          onPress={toggleDeepAnalysisDialog}
+          isAnalyzing={isPerformingDeepAnalysis}
+          hasDeepAnalysis={deepAnalysisResults !== null}
+        />
+      )}
+      
+      {/* Deep Analysis Dialog */}
+      <DeepAnalysisDialog 
+        visible={isDeepAnalysisDialogVisible}
+        onClose={() => setIsDeepAnalysisDialogVisible(false)}
+        onSubmit={handleDeepAnalysis}
+        isLoading={isPerformingDeepAnalysis}
+        captureCount={captures.length}
       />
+      
+      {/* Deep Analysis Results */}
+      {deepAnalysisResults && isDeepAnalysisResultsVisible && (
+        <DeepAnalysisResults 
+          results={deepAnalysisResults}
+          onClose={() => setIsDeepAnalysisResultsVisible(false)}
+        />
+      )}
       
       {/* Error display */}
       {cameraError && <ErrorView error={cameraError} />}
@@ -182,3 +275,14 @@ export default function App() {
     </View>
   );
 }
+
+// Update capture button position to better align with card stack and deep analysis button
+const additionalStyles = StyleSheet.create({
+  centeredCaptureButton: {
+    position: 'absolute',
+    bottom: 55, // Match the deep analysis button position
+    width: '100%',
+    alignItems: 'center',
+    zIndex: 50,
+  },
+});

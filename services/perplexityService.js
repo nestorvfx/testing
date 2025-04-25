@@ -114,21 +114,31 @@ const prepareImageForUpload = async (imageUri) => {
  * @returns {Promise<{width: number, height: number}>} - Image dimensions
  */
 const getImageDimensions = async (uri) => {
-  return new Promise((resolve, reject) => {
+  try {
     if (Platform.OS === 'web') {
-      const img = new Image();
-      img.onload = () => {
-        resolve({ width: img.width, height: img.height });
-      };
-      img.onerror = reject;
-      img.src = uri;
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          resolve({ width: img.width, height: img.height });
+        };
+        img.onerror = reject;
+        img.src = uri;
+      });
     } else {
-      Image.getSize(uri, 
-        (width, height) => resolve({ width, height }), 
-        reject
+      // For Android and iOS, use manipulateAsync to get image info
+      // This is more reliable than Image.getSize
+      const info = await manipulateAsync(
+        uri,
+        [], // No operations, just get info
+        { format: SaveFormat.JPEG }
       );
+      return { width: info.width, height: info.height };
     }
-  });
+  } catch (error) {
+    console.error('Error getting image dimensions:', error);
+    // Return fallback dimensions if we can't determine them
+    return { width: 1024, height: 1024 };
+  }
 };
 
 /**
@@ -248,58 +258,247 @@ Note: If there are multiple notable elements in the photo, focus on the one that
  */
 const parseAnalysisText = (text, citations = []) => {
   try {
+    // Remove <think> blocks - often included in deep analysis responses
+    let cleanText = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    
     // Remove citation markers like [1][2] from the text
-    const cleanText = text.replace(/\[\d+\]/g, '');
+    cleanText = cleanText.replace(/\[\d+\]/g, '');
     
-    // Simple parsing of the expected format
-    const title = cleanText.match(/Title: (.*?)(?:\n|$)/)?.[1] || 
-                 cleanText.match(/# Title: (.*?)(?:\n|$)/)?.[1] || "Unknown";
-                 
-    const description = cleanText.match(/Description: (.*?)(?:\nKey Points|\n\n|$)/s)?.[1]?.trim() || 
-                       cleanText.match(/## Description\n(.*?)(?:\n##|\n\n|$)/s)?.[1]?.trim() || "";
+    // For markdown formatted headings, convert to standard format
+    cleanText = cleanText.replace(/# ([^\n]+)/g, 'Title: $1');
+    cleanText = cleanText.replace(/## ([^\n]+)/g, '$1:');
     
-    // Extract key points as an array
-    const keyPointsSection = cleanText.match(/Key Points:(.*?)(?:\nReference:|\n\n|$)/s)?.[1] || 
-                            cleanText.match(/## Key Points:?\n(.*?)(?:\n##|\n\n|$)/s)?.[1] || "";
-    const keyPoints = keyPointsSection
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.startsWith('-') || line.startsWith('•'))
-      .map(line => line.replace(/^[-•]\s*/, ''))
-      .filter(Boolean);
+    // Extract title - try various patterns
+    let title = cleanText.match(/Title: (.*?)(?:\n|$)/i)?.[1] || 
+               cleanText.match(/^(.*?)(?:\n|$)/)?.[1] || 
+               "Analysis Results";
     
-    // Get base reference text
-    let referenceText = cleanText.match(/Reference: (.*?)(?:\n|$)/)?.[1] || 
-                       cleanText.match(/## References?\n(.*?)(?:\n##|\n\n|$)/s)?.[1]?.trim() || 
-                       "Sources";
+    // If title is too long, it might be part of free-form text - truncate it
+    if (title.length > 100) {
+      title = title.substring(0, 97) + "...";
+    }
+    
+    // Extract description - try multiple patterns
+    let description = cleanText.match(/Description: (.*?)(?:\nKey Points|\n\n|$)/is)?.[1]?.trim() || 
+                     cleanText.match(/Description\n(.*?)(?:\nKey Points|\n\n|$)/is)?.[1]?.trim() || 
+                     cleanText.match(/^(?:(?!Title|Key Points|Reference).)*$/im)?.[0]?.trim() || "";
+    
+    // If no description found but we have text, provide a fallback
+    if (!description && cleanText.length > 0) {
+      const firstParagraph = cleanText.split('\n\n')[0];
+      if (firstParagraph && !firstParagraph.includes('Title:')) {
+        description = firstParagraph.trim();
+      } else {
+        // Get first substantial paragraph as description
+        const paragraphs = cleanText.split('\n\n').filter(p => 
+          p.length > 50 && 
+          !p.includes('Title:') && 
+          !p.includes('Key Points:') && 
+          !p.includes('Reference:')
+        );
+        description = paragraphs[0] || "Analysis provided by Perplexity AI";
+      }
+    }
+    
+    // Extract key points as an array - try multiple patterns
+    let keyPointsSection = cleanText.match(/Key Points:(.*?)(?:\nReference:|\n\n|$)/is)?.[1] || 
+                          cleanText.match(/Key Points\n(.*?)(?:\nReference:|\n\n|$)/is)?.[1] || "";
+    
+    let keyPoints = [];
+    if (keyPointsSection) {
+      keyPoints = keyPointsSection
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.startsWith('-') || line.startsWith('•') || line.startsWith('*'))
+        .map(line => line.replace(/^[-•*]\s*/, ''))
+        .filter(Boolean);
+    }
+    
+    // If no key points found but we have paragraph breaks, make paragraphs into key points
+    if (keyPoints.length === 0) {
+      const potentialPoints = cleanText
+        .split('\n\n')
+        .filter(p => 
+          p.length > 20 && 
+          !p.includes('Title:') && 
+          !p.includes('Description:') && 
+          !p.includes('Key Points:') && 
+          !p.includes('Reference:')
+        )
+        .slice(1); // Skip first paragraph as it's likely the description
+        
+      if (potentialPoints.length > 0) {
+        keyPoints = potentialPoints.map(p => p.replace(/^\s*[-•*]\s*/, '').trim());
+      }
+    }
+    
+    // Get reference text or use fallback
+    let referenceText = cleanText.match(/Reference: (.*?)(?:\n|$)/i)?.[1] || 
+                       cleanText.match(/References\n(.*?)(?:\n##|\n\n|$)/is)?.[1]?.trim() || 
+                       "Source: Perplexity AI analysis";
     
     // Take just the top 2 citations for the references
     const topCitations = citations.slice(0, 2);
     
-    // Format citations for display
-    let referencesFormatted = referenceText;
-    if (topCitations.length > 0) {
-      // We'll provide both the text reference and the structured citation URLs
-      referencesFormatted = referenceText;
-    }
-    
     const result = {
       title,
       description,
-      keyPoints,
-      reference: referencesFormatted,
-      citations: topCitations // Just include top 2 citations
+      keyPoints: keyPoints.length > 0 ? keyPoints : generateFallbackKeyPoints(description),
+      reference: referenceText,
+      citations: topCitations
     };
     
     return result;
   } catch (error) {
     console.error('Error parsing analysis text:', error);
+    return generateFallbackAnalysis(text);
+  }
+};
+
+/**
+ * Generate fallback key points from description
+ * @param {string} description - Description text
+ * @returns {Array} - Array of generated key points
+ */
+const generateFallbackKeyPoints = (description) => {
+  if (!description || description.length < 20) {
+    return ["No detailed analysis available"];
+  }
+  
+  // Split into sentences and try to extract 3-5 key points
+  const sentences = description.match(/[^.!?]+[.!?]+/g) || [];
+  
+  if (sentences.length <= 1) {
+    return [description];
+  } else if (sentences.length <= 3) {
+    return sentences.map(s => s.trim());
+  } else {
+    // Pick sentences distributed throughout the text
+    const step = Math.floor(sentences.length / 3);
+    return [
+      sentences[0].trim(),
+      sentences[Math.min(step, sentences.length - 1)].trim(),
+      sentences[Math.min(2 * step, sentences.length - 1)].trim()
+    ];
+  }
+};
+
+/**
+ * Generate a fallback analysis when parsing fails
+ * @param {string} text - Original analysis text
+ * @returns {object} - Basic analysis object
+ */
+const generateFallbackAnalysis = (text) => {
+  // Extract the first 200 characters for the description
+  const shortText = text.substring(0, 200) + (text.length > 200 ? "..." : "");
+  
+  return {
+    title: "Analysis Results",
+    description: shortText,
+    keyPoints: ["The complete analysis is available but couldn't be structured automatically"],
+    reference: "Source: Perplexity AI",
+    citations: []
+  };
+};
+
+/**
+ * Performs deep analysis on multiple images using the sonar-deep-research model
+ * @param {Array} images - Array of image objects to analyze together
+ * @param {string} userPrompt - Custom prompt from the user
+ * @returns {Promise<object>} - Analysis results
+ */
+export const performDeepAnalysis = async (images, userPrompt = "") => {
+  try {
+    console.log(`Starting deep analysis of ${images.length} images with custom prompt`);
+    
+    // Prepare all images as base64
+    const imagePromises = images.map(image => prepareImageForUpload(image.uri));
+    const base64Images = await Promise.all(imagePromises);
+    
+    // Build a combined message with all images
+    const content = [
+      {
+        type: "text",
+        text: `Main Task:${userPrompt ? userPrompt + "\n\n" : ""}\n Guide to follow (a must):\n You are given a series of photos that are connected. Consider all images together as a collection. 
+        Analyze these images as a group, looking for patterns, connections, or themes with insightful answer on the given prompt/images.
+        \n\nPresent your findings in the following structured format:
+        \n\nTitle: [A concise title that describes the main theme or connection]
+        \nDescription: [A detailed paragraph providing a comprehensive analysis of what these images represent as a collection]
+        \nKey Points:
+        \n- [Important insight or connection 1]
+        \n- [Important insight or connection 2]
+        \n- [Important insight or connection 3]
+        \n- [Add more key points as necessary]
+        \nReference: [References or sources for your analysis]`
+      },
+      ...base64Images.map(base64 => ({
+        type: "image_url",
+        image_url: { url: base64 }
+      }))
+    ];
+    
+    // Make API request using deep research model
+    const payload = {
+      model: "sonar-deep-research",
+      messages: [
+        {
+          role: "user",
+          content: content
+        }
+      ],
+      stream: false,
+      max_tokens: 1500
+    };
+    
+    console.log("Sending deep analysis request to Perplexity API");
+    
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error (${response.status}): ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Log the raw API response for debugging
+    console.log('=== PERPLEXITY DEEP ANALYSIS RESPONSE START ===');
+    console.log('Status:', response.status);
+    console.log('Response data:', JSON.stringify(data, null, 2));
+    console.log('=== PERPLEXITY DEEP ANALYSIS RESPONSE END ===');
+    
+    const analysisText = data.choices[0].message.content;
+    console.log('Raw deep analysis text:', analysisText);
+    
+    // Parse the response the same way as regular analysis
+    const citations = data.citations || [];
+    const parsedAnalysis = parseAnalysisText(analysisText, citations);
+    
+    // Add metadata about this analysis
     return {
-      title: "Analysis Result",
-      description: text.substring(0, 200) + "...",
-      keyPoints: [],
+      ...parsedAnalysis,
+      timestamp: new Date().toISOString(),
+      imageCount: images.length,
+      customPrompt: userPrompt || null
+    };
+    
+  } catch (error) {
+    console.error('Deep Analysis error:', error);
+    return {
+      title: "Deep Analysis Failed",
+      description: "There was an error analyzing these images together.",
+      keyPoints: ["API error occurred", `Error: ${error.message}`],
       reference: "N/A",
-      citations: []
+      timestamp: new Date().toISOString(),
+      error: true
     };
   }
 };

@@ -10,10 +10,10 @@ export const CAMERA_TYPE = {
   front: isWeb ? undefined : Camera.Constants?.Type?.front
 };
 
-// Constants for responsive design
-export const COMPACT_MAX_WIDTH = 180;
-export const CARD_WIDTH = 100;
-export const CARD_HEIGHT = 100;
-export const STACK_OFFSET = 20;
+// Constants for responsive design - make cards smaller overall
+export const COMPACT_MAX_WIDTH = 160; // Reduced from 180
+export const CARD_WIDTH = 80;      // Reduced from 100
+export const CARD_HEIGHT = 80;     // Reduced from 100
+export const STACK_OFFSET = 15;    // Reduced from 20
 export const MAX_VISIBLE_CARDS = 5;
-export const MAX_CARDS = 100; // Increased from 10 to 100
+export const MAX_CARDS = 100;

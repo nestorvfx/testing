@@ -40,8 +40,8 @@ const AnalyzeButton = ({ onPress, isAnalyzing, unanalyzedCount }) => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 10,
-    right: 50,
+    top: 20,
+    left: '3%',
     zIndex: 150,
   },
   button: {

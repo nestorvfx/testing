@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { Animated } from 'react-native';
+import { useState, useRef, useEffect } from 'react';
+import { Animated, Platform } from 'react-native';
 
 export const useCardStack = (dimensions) => {
   // Basic state for cards functionality
@@ -32,19 +32,34 @@ export const useCardStack = (dimensions) => {
     });
   };
   
-  // Simple toggle function
+  // Toggle function with improved logging
   const toggleCardGroup = () => {
-    console.log("Toggling card group, current state:", isCardsExpanded);
+    console.log("Toggling card group - current state:", isCardsExpanded);
     
     if (expandedCardIndex !== null) {
       collapseCard();
       return;
     }
     
-    setIsCardsExpanded(!isCardsExpanded);
+    // For Android, add an explicit state update with logging
+    if (Platform.OS === 'android') {
+      console.log('Setting isCardsExpanded to:', !isCardsExpanded);
+      setIsCardsExpanded(!isCardsExpanded);
+      
+      // For good measure, also reset scroll position
+      if (scrollViewRef.current && !isCardsExpanded) {
+        setTimeout(() => {
+          if (scrollViewRef.current) {
+            scrollViewRef.current.scrollTo({ x: 0, animated: false });
+          }
+        }, 50);
+      }
+    } else {
+      setIsCardsExpanded(!isCardsExpanded);
+    }
   };
   
-  // Expand a single card
+  // Expand a single card with improved Android handling
   const expandCard = (index) => {
     console.log("Expanding card at index:", index);
     
@@ -53,7 +68,22 @@ export const useCardStack = (dimensions) => {
       return;
     }
     
-    setExpandedCardIndex(index);
+    // For Android, use a small delay to ensure the previous state updates complete
+    if (Platform.OS === 'android') {
+      // First collapse any expanded card
+      if (expandedCardIndex !== null) {
+        setExpandedCardIndex(null);
+        
+        // Then expand the new card after a brief delay
+        setTimeout(() => {
+          setExpandedCardIndex(index);
+        }, 50);
+      } else {
+        setExpandedCardIndex(index);
+      }
+    } else {
+      setExpandedCardIndex(index);
+    }
   };
   
   // Collapse expanded card

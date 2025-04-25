@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, TouchableOpacity, Image, Text, Dimensions, Animated, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import CardStack from './CardStack';
@@ -8,16 +8,17 @@ const CardGroup = ({
   scrollViewRef,
   captures,
   toggleCardGroup,
-  expandCard
+  expandCard,
+  dimensions
 }) => {
   // Improved responsive sizing
   const { width: screenWidth } = Dimensions.get('window');
   
-  // More responsive card sizing based on screen width
-  // For small screens: 20% of width, medium: 18%, large: 15% with constraints
-  const screenSizeMultiplier = screenWidth < 400 ? 0.2 : screenWidth < 700 ? 0.18 : 0.15;
-  const itemSize = Math.max(70, Math.min(screenWidth * screenSizeMultiplier, 140));
-  const cardSpacing = Math.max(8, Math.min(screenWidth * 0.02, 15));
+  // More responsive card sizing based on screen width with more aggressive scaling
+  // For small screens: 17% of width, medium: 15%, large: 13% with constraints
+  const screenSizeMultiplier = screenWidth < 400 ? 0.17 : screenWidth < 700 ? 0.15 : 0.13;
+  const itemSize = Math.max(60, Math.min(screenWidth * screenSizeMultiplier, 120));
+  const cardSpacing = Math.max(6, Math.min(screenWidth * 0.015, 12));
   
   // Calculate visible window and fade zone widths
   const contentPadding = 120; // Total padding (60px on each side)
@@ -74,7 +75,7 @@ const CardGroup = ({
   return (
     <View style={{
       position: 'absolute',
-      bottom: 20,
+      bottom: 10,
       left: isCardsExpanded ? 0 : 20,
       width: isCardsExpanded ? '100%' : 180,
       height: isCardsExpanded ? itemSize + 30 : 130, // Adjust height based on card size
@@ -107,10 +108,11 @@ const CardGroup = ({
           <CardStack 
             captures={captures} 
             toggleCardGroup={toggleCardGroup} 
+            dimensions={dimensions}
           />
         ) : null
       ) : (
-        /* Expanded mode with proper gradual fading of cards at edges */
+        /* Expanded mode */
         <View style={{ width: '100%', height: '100%' }}>
           {/* Main ScrollView containing the cards - simplified for reliable scrolling */}
           <ScrollView
@@ -164,15 +166,11 @@ const CardGroup = ({
                   }}
                 >
                   <TouchableOpacity
-                    onPress={() => expandCard(index)}
-                    activeOpacity={0.7}
-                    onMoveShouldSetResponder={(evt, gestureState) => {
-                      // Adjusted threshold from 5 to 2 for more responsive scrolling
-                      if (Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 2) {
-                        return false; // Yield to parent (ScrollView) for horizontal movement
-                      }
-                      return true; // Allow TouchableOpacity to handle taps
+                    onPress={() => {
+                      console.log('Card pressed at index:', index);
+                      expandCard(index);
                     }}
+                    activeOpacity={0.7}
                     style={{
                       width: itemSize,
                       height: itemSize,

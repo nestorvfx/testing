@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Camera } from 'expo-camera';
 import * as MediaLibrary from 'expo-media-library';
+import { Platform } from 'react-native';
 import { isWeb } from '../constants';
 
 export const usePermissions = () => {
-  const [hasPermission, setHasPermission] = useState(null);
+  // Set hasPermission to 'pending' instead of null to avoid showing permission screen
+  const [hasPermission, setHasPermission] = useState('pending');
   const [mediaPermissionOnly, setMediaPermissionOnly] = useState(false);
   const [permissionError, setPermissionError] = useState(null);
   const [isMounted, setIsMounted] = useState(true);
@@ -34,7 +36,7 @@ export const usePermissions = () => {
 
   // Function to retry permission requests
   const retryPermissions = () => {
-    setHasPermission(null);
+    setHasPermission('pending');
     setMediaPermissionOnly(false);
     setPermissionError(null);
   };
@@ -47,9 +49,7 @@ export const usePermissions = () => {
       try {
         // For web platform, we only need camera permission, not media library
         if (isWeb) {
-          console.log('Running on web platform - only checking camera permission');
           const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
-          console.log('Camera permission status on web:', cameraStatus);
           
           if (isMounted) {
             setHasPermission(cameraStatus === 'granted');
@@ -65,13 +65,9 @@ export const usePermissions = () => {
         const cameraPermissionInfo = await Camera.getCameraPermissionsAsync();
         const mediaLibraryPermissionInfo = await MediaLibrary.getPermissionsAsync();
         
-        console.log('Existing camera permission:', cameraPermissionInfo);
-        console.log('Existing media library permission:', mediaLibraryPermissionInfo);
-        
         // If both permissions are already granted, set state immediately
         if (cameraPermissionInfo.status === 'granted' && mediaLibraryPermissionInfo.status === 'granted') {
           if (isMounted) {
-            console.log('Both permissions are already granted, setting hasPermission to true');
             setHasPermission(true);
             setMediaPermissionOnly(false);
             return;
@@ -80,25 +76,19 @@ export const usePermissions = () => {
 
         // Special case: Camera granted but media undetermined - focus on requesting media permission
         if (cameraPermissionInfo.status === 'granted' && mediaLibraryPermissionInfo.status === 'undetermined') {
-          console.log('Camera permission granted, but media permission undetermined. Focusing on media permission.');
           setMediaPermissionOnly(true);
-          
-          // Try explicitly requesting media library permission
           await requestMediaPermissionOnly();
           return;
         }
         
         // Request camera permissions if not already granted
         const { status: cameraStatus } = await Camera.requestCameraPermissionsAsync();
-        console.log('Camera permission status after request:', cameraStatus);
         
         // Request media library permissions if not already granted
         const { status: mediaStatus } = await MediaLibrary.requestPermissionsAsync();
-        console.log('Media library permission status after request:', mediaStatus);
         
         if (isMounted) {
           const permissionsGranted = cameraStatus === 'granted' && mediaStatus === 'granted';
-          console.log('Setting hasPermission to:', permissionsGranted);
           setHasPermission(permissionsGranted);
           
           // If permissions were denied, set an error message
@@ -117,26 +107,17 @@ export const usePermissions = () => {
       }
     };
 
+    // Start permission check immediately
     getPermissions();
-    
-    // Add a permission refresh mechanism
-    const permissionCheckInterval = setInterval(async () => {
-      if (!hasPermission && isMounted) {
-        console.log('Checking permissions again...');
-        getPermissions();
-      } else {
-        clearInterval(permissionCheckInterval);
-      }
-    }, 2000);  // Check every 2 seconds if permissions were not initially granted
     
     return () => {
       setIsMounted(false);
-      clearInterval(permissionCheckInterval);
     };
-  }, [hasPermission]);
+  }, []);
   
   return {
-    hasPermission,
+    // For Android always return true initially to avoid the permission screen flash
+    hasPermission: Platform.OS === 'android' ? (hasPermission === 'pending' ? true : hasPermission) : hasPermission,
     mediaPermissionOnly,
     permissionError,
     requestMediaPermissionOnly,
