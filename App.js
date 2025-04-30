@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet, Alert } from 'react-native';
 import { Camera } from 'expo-camera';
 
 // Components
@@ -13,6 +13,10 @@ import AnalyzeButton from './components/ui/AnalyzeButton';
 import DeepAnalysisButton from './components/ui/DeepAnalysisButton';
 import DeepAnalysisDialog from './components/ui/DeepAnalysisDialog';
 import DeepAnalysisResults from './components/ui/DeepAnalysisResults';
+import NewAnalysisPromptModal from './components/ui/NewAnalysisPromptModal';
+// Import the new components
+import VoiceButton from './components/ui/VoiceButton';
+import ImmediateAnalysisButton from './components/ui/ImmediateAnalysisButton';
 
 // Hooks
 import { useCamera } from './hooks/useCamera';
@@ -51,6 +55,12 @@ export default function App() {
     panResponder, cardGroupStyles, expandAnimation
   } = useCardStack(dimensions);
 
+  // Add state for voice recognition and immediate analysis
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isImmediateAnalysisActive, setIsImmediateAnalysisActive] = useState(false);
+  const [spokenPrompt, setSpokenPrompt] = useState('');
+  const [isVoiceCapturing, setIsVoiceCapturing] = useState(false);
+
   // Add state for analysis tracking
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
@@ -67,10 +77,53 @@ export default function App() {
   }, []);
 
   // Handle photo capture and add to stack
-  const handleCapturePhoto = async () => {
+  const handleCapturePhoto = async (customPrompt = '') => {
+    // Prevent capture if analysis is in progress and immediate analysis is active
+    if (isImmediateAnalysisActive && isAnalyzing) {
+      console.log('Analysis in progress, capture prevented');
+      return;
+    }
+
     const photo = await capturePhoto();
     if (photo) {
-      addCapture(photo);
+      // Add custom prompt to photo if provided
+      const photoWithPrompt = customPrompt ? { ...photo, customPrompt } : photo;
+      
+      // Add the photo to captures first
+      addCapture(photoWithPrompt);
+      
+      // If immediate analysis is active, analyze this photo right away
+      if (isImmediateAnalysisActive) {
+        setIsAnalyzing(true);
+        try {
+          // Get the current captures array after adding the new photo
+          const currentCaptures = [...captures, photoWithPrompt];
+          
+          // Analyze just the new photo
+          const analyzedResult = await analyzeImages([photoWithPrompt]);
+          if (analyzedResult && analyzedResult.length > 0) {
+            const analyzedPhoto = analyzedResult[0];
+            
+            // Create an updated captures array with the analyzed photo
+            const updatedCaptures = currentCaptures.map(capture => 
+              capture.uri === analyzedPhoto.uri ? analyzedPhoto : capture
+            );
+            
+            // Update all captures
+            addCapture(null, updatedCaptures);
+            
+            // Expand the analyzed card (the most recent one)
+            setTimeout(() => {
+              expandCard(0);
+            }, 500);
+          }
+        } catch (error) {
+          console.error('Error analyzing image:', error);
+          setCameraError(new Error('Failed to analyze image: ' + error.message));
+        } finally {
+          setIsAnalyzing(false);
+        }
+      }
     }
   };
 
@@ -91,78 +144,93 @@ export default function App() {
     }
   };
 
-  // Add state for deep analysis
-  const [isDeepAnalysisDialogVisible, setIsDeepAnalysisDialogVisible] = useState(false);
-  const [isPerformingDeepAnalysis, setIsPerformingDeepAnalysis] = useState(false);
-  const [deepAnalysisResults, setDeepAnalysisResults] = useState(null);
-  const [isDeepAnalysisResultsVisible, setIsDeepAnalysisResultsVisible] = useState(false);
-  
-  // Function to handle deep analysis
-  const handleDeepAnalysis = async (customPrompt) => {
-    if (captures.length === 0) return;
+  // Handle speech recognition result with better error handling
+  const handleSpeechResult = async (text) => {
+    console.log('Speech recognized:', text);
     
-    setIsDeepAnalysisDialogVisible(false);
-    setIsPerformingDeepAnalysis(true);
+    if (!text || text.trim().length === 0) {
+      console.log('Empty speech result, ignoring');
+      return;
+    }
+    
+    setSpokenPrompt(text);
+    setIsVoiceCapturing(true);
     
     try {
-      const results = await performDeepAnalysis(captures, customPrompt);
-      setDeepAnalysisResults(results);
-      setIsDeepAnalysisResultsVisible(true);
+      // Short delay to allow UI to update
+      setTimeout(async () => {
+        try {
+          // Capture photo with the spoken text as custom prompt
+          await handleCapturePhoto(text);
+        } catch (error) {
+          console.error('Error capturing photo with speech prompt:', error);
+          Alert.alert(
+            'Voice Capture Error',
+            'There was a problem capturing with your voice prompt. Please try again.'
+          );
+        } finally {
+          setIsVoiceCapturing(false);
+          setSpokenPrompt('');
+        }
+      }, 500);
     } catch (error) {
-      console.error('Deep analysis error:', error);
-      // Handle error - could show an error toast here
-    } finally {
-      setIsPerformingDeepAnalysis(false);
-    }
-  };
-  
-  // Function to toggle deep analysis dialog
-  const toggleDeepAnalysisDialog = () => {
-    // If we already have results, show them instead of the dialog
-    if (deepAnalysisResults && !isDeepAnalysisResultsVisible) {
-      setIsDeepAnalysisResultsVisible(true);
-    } else if (!deepAnalysisResults) {
-      setIsDeepAnalysisDialogVisible(!isDeepAnalysisDialogVisible);
+      console.error('Error in speech result handling:', error);
+      setIsVoiceCapturing(false);
+      setSpokenPrompt('');
     }
   };
 
-  // Add this new function at the app component level
-  const onScreenTap = (event) => {
-    if (Platform.OS === 'android') {
-      const { locationX, locationY } = event.nativeEvent;
-      console.log(`Screen tapped at X: ${locationX}, Y: ${locationY}`);
+  // Deep analysis states
+  const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
+  const [deepAnalyses, setDeepAnalyses] = useState([]);
+  const [isDeepAnalysisResultsVisible, setIsDeepAnalysisResultsVisible] = useState(false);
+  const [isPromptModalVisible, setIsPromptModalVisible] = useState(false);
+  
+  // Function to handle deep analysis
+  const handleDeepAnalysis = useCallback(async (userPrompt = "") => {
+    if (captures.length === 0) {
+      Alert.alert("No Captures", "Please capture at least one image before analyzing.");
+      return;
+    }
+    
+    setIsDeepAnalyzing(true);
+    
+    try {
+      const result = await performDeepAnalysis(captures, userPrompt);
       
-      // Check if tap is in the bottom center area (where capture button should be)
-      const bottomThird = dimensions.height * 2/3;
-      const leftThird = dimensions.width * 1/3;
-      const rightThird = dimensions.width * 2/3;
-      
-      if (locationY > bottomThird && locationX > leftThird && locationX < rightThird) {
-        console.log('Tap detected in capture button area!');
-        handleCapturePhoto();
+      if (result && !result.error) {
+        // Add new analysis to the list
+        setDeepAnalyses(prevAnalyses => [...prevAnalyses, result]);
+        // Ensure the results view is visible
+        setIsDeepAnalysisResultsVisible(true);
+      } else {
+        Alert.alert(
+          "Analysis Failed", 
+          result?.description || "An unknown error occurred during deep analysis."
+        );
       }
+    } catch (error) {
+      console.error("Error during deep analysis:", error);
+      Alert.alert("Analysis Error", "Failed to perform deep analysis. Please try again.");
+    } finally {
+      setIsDeepAnalyzing(false);
     }
-  };
-
-  // Permission related views - only show if we've definitively determined no permission
-  if (hasPermission === false) {
-    return (
-      <DeniedPermissionView 
-        cameraError={permissionError || cameraError}
-        retryPermissions={retryPermissions}
-      />
-    );
-  }
+  }, [captures]);
   
-  // Skip all other permission checks to avoid flashes - just show the main UI
-  // The camera component will handle showing its own errors if needed
-
+  // Open prompt modal for new analysis
+  const handleAddNewAnalysis = useCallback(() => {
+    setIsPromptModalVisible(true);
+  }, []);
+  
+  // Submit prompt for analysis
+  const handlePromptSubmit = useCallback((prompt) => {
+    setIsPromptModalVisible(false);
+    handleDeepAnalysis(prompt);
+  }, [handleDeepAnalysis]);
+  
   // Main app UI
   return (
-    <View 
-      style={styles.container} 
-      onTouchStart={handleOutsideClick}
-    >
+    <View style={styles.container}>
       {/* Camera */}
       <CameraView 
         dimensions={dimensions}
@@ -173,17 +241,40 @@ export default function App() {
         isCapturing={isCapturing}
       />
       
+      {/* Voice capturing indicator */}
+      {isVoiceCapturing && (
+        <View style={[styles.recordingIndicator, { top: 70 }]}>
+          <Text style={styles.recordingText}>Processing: "{spokenPrompt}"</Text>
+        </View>
+      )}
+      
+      {/* Top control bar for voice and immediate analysis buttons */}
+      <View style={customStyles.topControlBar}>
+        <View style={customStyles.buttonGroup}>
+          <VoiceButton 
+            isActive={isVoiceActive}
+            onToggleActive={() => setIsVoiceActive(!isVoiceActive)}
+            onSpeechResult={handleSpeechResult}
+          />
+          <ImmediateAnalysisButton 
+            isActive={isImmediateAnalysisActive} 
+            onToggle={() => setIsImmediateAnalysisActive(!isImmediateAnalysisActive)}
+            isAnalyzing={isAnalyzing}
+          />
+        </View>
+      </View>
+      
       {/* Centered capture button */}
       {!isCardsExpanded && (
           <CaptureButton 
-            onPress={handleCapturePhoto}
+            onPress={() => handleCapturePhoto()}
             isCapturing={isCapturing}
-            disabled={!cameraReady}
+            disabled={!cameraReady || (isImmediateAnalysisActive && isAnalyzing)}
             captureButtonScale={captureButtonScale}
           />
       )}
       
-      {/* Expanded card view */}
+      {/* Expanded card view - will handle its own touch prevention */}
       {expandedCardIndex !== null && captures[expandedCardIndex] && (
         <ExpandedCard 
           capture={captures[expandedCardIndex]}
@@ -227,31 +318,38 @@ export default function App() {
         />
       )}
       
-      {/* Deep Analysis Button - hide when cards are expanded */}
+      {/* Deep Analysis Button */}
       {captures.length > 0 && !isCardsExpanded && (
         <DeepAnalysisButton 
-          onPress={toggleDeepAnalysisDialog}
-          isAnalyzing={isPerformingDeepAnalysis}
-          hasDeepAnalysis={deepAnalysisResults !== null}
+          onPress={() => {
+            if (deepAnalyses.length > 0) {
+              setIsDeepAnalysisResultsVisible(true);
+            } else {
+              handleAddNewAnalysis();
+            }
+          }}
+          isAnalyzing={isDeepAnalyzing}
+          hasDeepAnalysis={deepAnalyses.length > 0}
         />
       )}
-      
-      {/* Deep Analysis Dialog */}
-      <DeepAnalysisDialog 
-        visible={isDeepAnalysisDialogVisible}
-        onClose={() => setIsDeepAnalysisDialogVisible(false)}
-        onSubmit={handleDeepAnalysis}
-        isLoading={isPerformingDeepAnalysis}
-        captureCount={captures.length}
-      />
       
       {/* Deep Analysis Results */}
-      {deepAnalysisResults && isDeepAnalysisResultsVisible && (
+      {isDeepAnalysisResultsVisible && (
         <DeepAnalysisResults 
-          results={deepAnalysisResults}
+          analyses={deepAnalyses}
+          isAnalyzing={isDeepAnalyzing}
           onClose={() => setIsDeepAnalysisResultsVisible(false)}
+          onAddNewAnalysis={handleAddNewAnalysis}
         />
       )}
+      
+      {/* New Analysis Prompt Modal */}
+      <NewAnalysisPromptModal
+        visible={isPromptModalVisible}
+        onClose={() => setIsPromptModalVisible(false)}
+        onSubmit={handlePromptSubmit}
+        imagesCount={captures.length}
+      />
       
       {/* Error display */}
       {cameraError && <ErrorView error={cameraError} />}
@@ -276,13 +374,20 @@ export default function App() {
   );
 }
 
-// Update capture button position to better align with card stack and deep analysis button
-const additionalStyles = StyleSheet.create({
-  centeredCaptureButton: {
+// Additional styles for new components
+const customStyles = StyleSheet.create({
+  topControlBar: {
     position: 'absolute',
-    bottom: 55, // Match the deep analysis button position
-    width: '100%',
-    alignItems: 'center',
-    zIndex: 50,
+    top: 20,
+    right: 20,
+    zIndex: 150,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  buttonGroup: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 25,
+    padding: 5,
   },
 });

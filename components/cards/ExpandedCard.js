@@ -1,30 +1,22 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Linking } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Dimensions, ScrollView, StyleSheet, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 const ExpandedCard = ({ capture, dimensions, collapseCard }) => {
   if (!capture) return null;
   
-  // Calculate card dimensions with 9:16 aspect ratio
+  // Calculate card dimensions
   const screenWidth = dimensions?.width || Dimensions.get('window').width;
   const screenHeight = dimensions?.height || Dimensions.get('window').height;
   
-  // Start with 85% of screen width as base
+  // Card sizing
   const baseWidth = screenWidth * 0.85;
-  
-  // Calculate height based on 9:16 ratio
   const targetHeight = (baseWidth * 16) / 9;
-  
-  // Make sure card stays within screen
   const maxHeight = screenHeight * 0.85;
   const cardHeight = Math.min(targetHeight, maxHeight);
+  const cardWidth = targetHeight > maxHeight ? (maxHeight * 9) / 16 : baseWidth;
   
-  // If height is constrained, adjust width to maintain ratio
-  const cardWidth = targetHeight > maxHeight 
-    ? (maxHeight * 9) / 16 
-    : baseWidth;
-  
-  // Determine if this card has been analyzed
+  // Check if the card has analysis data
   const isAnalyzed = capture.analyzed && capture.analysis;
   
   return (
@@ -32,10 +24,16 @@ const ExpandedCard = ({ capture, dimensions, collapseCard }) => {
       {/* Background overlay for dismissal */}
       <TouchableOpacity 
         style={styles.dismissOverlay}
-        activeOpacity={1}
-        onPress={collapseCard}
+        activeOpacity={0.7}
+        onPress={(e) => {
+          // Only dismiss if the touch is on the backdrop
+          if (e.target === e.currentTarget) {
+            collapseCard();
+          }
+        }}
       />
       
+      {/* Card container - no touchable wrapper to allow scrolling */}
       <View style={[styles.cardContainer, { width: cardWidth, height: cardHeight }]}>
         {/* Card image - takes up 40% of the card for analyzed cards, 65% otherwise */}
         <View style={[styles.imageContainer, { height: isAnalyzed ? '40%' : '65%' }]}>
@@ -51,15 +49,40 @@ const ExpandedCard = ({ capture, dimensions, collapseCard }) => {
               <Text style={styles.analysisBadgeText}>Analyzed</Text>
             </View>
           )}
+          
+          {/* Custom prompt badge */}
+          {capture.customPrompt && (
+            <View style={[styles.analysisBadge, styles.promptBadge]}>
+              <Ionicons name="mic" size={14} color="#fff" />
+              <Text style={styles.analysisBadgeText}>Voice Prompt</Text>
+            </View>
+          )}
         </View>
         
         {/* Card content */}
         <View style={styles.contentContainer}>
           {isAnalyzed ? (
-            <ScrollView style={styles.analysisScrollView}>
+            <ScrollView 
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 16 }}
+              showsVerticalScrollIndicator={true}
+              alwaysBounceVertical={true}
+              scrollEventThrottle={16}
+              directionalLockEnabled={true}
+              removeClippedSubviews={false}
+              overScrollMode="always"
+            >
               <Text style={styles.title}>
                 {capture.analysis.title}
               </Text>
+              
+              {/* Display custom prompt if available */}
+              {capture.customPrompt && (
+                <View style={styles.promptContainer}>
+                  <Text style={styles.promptLabel}>Voice Prompt:</Text>
+                  <Text style={styles.promptText}>"{capture.customPrompt}"</Text>
+                </View>
+              )}
               
               <Text style={styles.description}>
                 {capture.analysis.description}
@@ -81,33 +104,28 @@ const ExpandedCard = ({ capture, dimensions, collapseCard }) => {
                 <View style={styles.referenceContainer}>
                   <Text style={styles.referenceLabel}>Reference: </Text>
                   <Text style={styles.referenceText}>{capture.analysis.reference}</Text>
-                  
-                  {/* Display citation links */}
-                  {capture.analysis.citations && capture.analysis.citations.length > 0 && (
-                    <View style={styles.citationsContainer}>
-                      {capture.analysis.citations.map((url, idx) => (
-                        <TouchableOpacity 
-                          key={idx}
-                          onPress={() => Linking.openURL(url)}
-                          style={styles.citationLink}
-                        >
-                          <Text style={styles.citationLinkText}>
-                            {url.replace(/^https?:\/\//, '').split('/')[0]}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
                 </View>
               )}
               
               <Text style={styles.timestamp}>
                 Analyzed on {new Date(capture.analysisDate).toLocaleString()}
               </Text>
+              
+              {/* Extra padding at bottom */}
+              <View style={{ height: 40 }} />
             </ScrollView>
           ) : (
             <View style={styles.noAnalysisContainer}>
               <Text style={styles.noAnalysisTitle}>Scene Capture</Text>
+              
+              {/* Display custom prompt if available */}
+              {capture.customPrompt && (
+                <View style={styles.promptContainerNoAnalysis}>
+                  <Text style={styles.promptLabelNoAnalysis}>Voice Prompt:</Text>
+                  <Text style={styles.promptTextNoAnalysis}>"{capture.customPrompt}"</Text>
+                </View>
+              )}
+              
               <Text style={styles.noAnalysisText}>
                 This image hasn't been analyzed yet. Use the "Analyze" button to get insights about this image.
               </Text>
@@ -186,10 +204,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    padding: 16,
-  },
-  analysisScrollView: {
-    flex: 1,
+    backgroundColor: 'white',
   },
   title: {
     fontSize: 20,
@@ -229,14 +244,18 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 20,
   },
-  referenceText: {
-    fontSize: 13,
-    color: '#666',
+  referenceContainer: {
     marginTop: 10,
-    fontStyle: 'italic',
   },
   referenceLabel: {
     fontWeight: 'bold',
+    fontSize: 14,
+    color: '#333',
+  },
+  referenceText: {
+    fontSize: 13,
+    color: '#666',
+    fontStyle: 'italic',
   },
   timestamp: {
     fontSize: 12,
@@ -283,35 +302,49 @@ const styles = StyleSheet.create({
     fontSize: 16, 
     fontWeight: 'bold',
   },
-  referenceContainer: {
-    marginTop: 10,
+  promptBadge: {
+    backgroundColor: 'rgba(233, 30, 99, 0.85)',
+    top: 12,
+    right: 120,
   },
-  referenceLabel: {
-    fontWeight: 'bold',
+  promptContainer: {
+    backgroundColor: 'rgba(233, 30, 99, 0.1)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: '#e91e63',
+  },
+  promptLabel: {
     fontSize: 14,
+    fontWeight: 'bold',
+    color: '#e91e63',
+    marginBottom: 4,
+  },
+  promptText: {
+    fontSize: 15,
+    fontStyle: 'italic',
     color: '#333',
   },
-  referenceText: {
-    fontSize: 13,
-    color: '#666',
+  promptContainerNoAnalysis: {
+    backgroundColor: 'rgba(233, 30, 99, 0.1)',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    marginHorizontal: 20,
+    borderLeftWidth: 3,
+    borderLeftColor: '#e91e63',
+  },
+  promptLabelNoAnalysis: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#e91e63',
+    marginBottom: 4,
+  },
+  promptTextNoAnalysis: {
+    fontSize: 15,
     fontStyle: 'italic',
-  },
-  citationsContainer: {
-    marginTop: 6,
-    marginBottom: 6,
-  },
-  citationLink: {
-    marginVertical: 3,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    backgroundColor: 'rgba(66, 133, 244, 0.1)',
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-  },
-  citationLinkText: {
-    color: '#4285F4',
-    fontSize: 12,
-    textDecorationLine: 'underline',
+    color: '#333',
   },
 });
 

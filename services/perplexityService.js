@@ -33,7 +33,8 @@ export const analyzeImages = async (images) => {
         
         try {
           const base64Image = await prepareImageForUpload(image.uri);
-          const analysis = await sendToPerplexityAPI(base64Image);
+          // Pass the custom prompt if available
+          const analysis = await sendToPerplexityAPI(base64Image, image.customPrompt || "");
           
           // Return updated image object with analysis data
           return {
@@ -68,6 +69,11 @@ export const analyzeImages = async (images) => {
  */
 const prepareImageForUpload = async (imageUri) => {
   try {
+    // For web, handle data URIs directly
+    if (Platform.OS === 'web' && imageUri.startsWith('data:')) {
+      return imageUri; // Already a data URI, no need to process
+    }
+    
     // Resize image to maximum 1024px on longest side
     const { width, height } = await getImageDimensions(imageUri);
     const maxDimension = Math.max(width, height);
@@ -115,13 +121,30 @@ const prepareImageForUpload = async (imageUri) => {
  */
 const getImageDimensions = async (uri) => {
   try {
-    if (Platform.OS === 'web') {
+    // For data URIs on web, create an Image element to get dimensions
+    if (Platform.OS === 'web' && uri.startsWith('data:')) {
       return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
           resolve({ width: img.width, height: img.height });
         };
         img.onerror = reject;
+        img.src = uri;
+      });
+    }
+    
+    if (Platform.OS === 'web') {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          resolve({ width: img.width, height: img.height });
+        };
+        img.onerror = (e) => {
+          console.error('Error loading image for dimensions:', e);
+          reject(e);
+        };
+        // Add CORS handling for web
+        img.crossOrigin = 'Anonymous';
         img.src = uri;
       });
     } else {
@@ -147,44 +170,68 @@ const getImageDimensions = async (uri) => {
  * @returns {Promise<string>} - Base64 encoded image
  */
 const fetchImageAsBase64 = async (uri) => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64data = reader.result.split(',')[1];
-      resolve(base64data);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  // Handle data URIs directly
+  if (uri.startsWith('data:')) {
+    const base64data = uri.split(',')[1];
+    return base64data;
+  }
+  
+  try {
+    const response = await fetch(uri, {
+      mode: 'cors', // Add CORS mode for web compatibility
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+    }
+    
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64data = reader.result.split(',')[1];
+        resolve(base64data);
+      };
+      reader.onerror = (e) => {
+        console.error('Error reading file:', e);
+        reject(e);
+      };
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('Error fetching image as base64:', error);
+    throw error;
+  }
 };
 
 /**
  * Send prepared image to Perplexity API and get analysis
  * @param {string} base64Image - Base64 encoded image data URI
+ * @param {string} userPrompt - Optional user prompt for additional context
  * @returns {Promise<object>} - Analysis results
  */
-const sendToPerplexityAPI = async (base64Image) => {
+const sendToPerplexityAPI = async (base64Image, userPrompt = "") => {
   try {
-    const prompt = `You are given a series of photos. For each photo, follow these steps:
-
-Examine the photo to identify the main subject or the most recognizable entity, such as a famous person, a landmark, or a notable object.
-
-Research the web to gather detailed information about the identified subject.
-
-Present your findings in the following structured format:
-
-Title: [A concise title that describes the main subject]
-Description: [A brief paragraph providing an overview of the subject]
-Key Points:
-- [Important fact or detail 1]
-- [Important fact or detail 2]
-- [Important fact or detail 3]
-- [Add more key points as necessary]
-Reference: [At least one reference or source for the information]
-
-Note: If there are multiple notable elements in the photo, focus on the one that appears to be the primary subject or the most prominent or if they as a group make sense look up like that`;
+    // For web, handle CORS issues by adding a timeout
+    if (Platform.OS === 'web') {
+      console.log('Running on web platform, ensuring image is properly formatted');
+    }
+    
+    const prompt = userPrompt ? 
+      `${userPrompt}\n\nPlease examine this image and provide insights about it. Structure your response with a title, description, and key points.` : 
+      `Examine this image and identify the main subject or notable elements. Provide detailed information in the following format:
+      
+      Title: [A concise title describing the main subject]
+      Description: [A comprehensive overview of what's shown]
+      Key Points:
+      - [Important fact or detail 1]
+      - [Important fact or detail 2]
+      - [Important fact or detail 3]
+      - [Add more key points as necessary]
+      Reference: [Sources for your information]`;
 
     const payload = {
       model: "sonar-pro",
@@ -415,15 +462,30 @@ export const performDeepAnalysis = async (images, userPrompt = "") => {
     const imagePromises = images.map(image => prepareImageForUpload(image.uri));
     const base64Images = await Promise.all(imagePromises);
     
-    // Build a combined message with all images
+    // Prepare previous analysis results text - only include if analysis exists
+    let previousAnalysisText = "";
+    let hasPreviousAnalysis = false;
+    images.forEach((image, index) => {
+      if (image.analyzed && image.analysis) {
+        hasPreviousAnalysis = true; // Mark that we have at least one analysis
+        const analysis = image.analysis;
+        previousAnalysisText += `\n        --- Analysis for Image ${index + 1} ---\n        Title: ${analysis.title || 'N/A'}\n        Description: ${analysis.description || 'N/A'}\n        Key Points: ${analysis.keyPoints ? analysis.keyPoints.map(p => `- ${p}`).join('\n') : 'N/A'}\n        -----------------------------\n        `;
+      }
+      // No 'else' block - skip images without analysis
+    });
+
+    // Conditionally add the previous analysis section to the prompt
+    const analysisContext = hasPreviousAnalysis ? `\n        --- Previous Analysis Results ---${previousAnalysisText}\n        --- End of Previous Analysis ---\n        Guide to follow:\n        You are given a series of photos (provided below) and potentially their previous individual analyses (provided above).\n        Consider all images together as a collection, using any previous analyses as context.\n        Analyze these images and information in combination with the 'Main Task' as a group, looking for patterns, connections, or themes with insightful answer on the given prompt/images.` : `\n        Guide to follow:\n        You are given a series of photos (provided below).\n        Consider all images together as a collection.\n        Analyze these images in order to answer 'Main Prompt' as a group, looking for patterns, connections, or themes with insightful answer on the given prompt/images.`;
+
+    // Build a combined message with all images and previous analysis
     const content = [
       {
         type: "text",
-        text: `Main Task:${userPrompt ? userPrompt + "\n\n" : ""}\n Guide to follow (a must):\n You are given a series of photos that are connected. Consider all images together as a collection. 
-        Analyze these images as a group, looking for patterns, connections, or themes with insightful answer on the given prompt/images.
+        text: userPrompt ? 'Main Prompt (most important): '+userPrompt+`\n Previous information (use to gain insights in order to complete Main prompt accordingly):\n
+        ${analysisContext}`: `Find connection and provide insightful analysis\n${analysisContext}
         \n\nPresent your findings in the following structured format:
         \n\nTitle: [A concise title that describes the main theme or connection]
-        \nDescription: [A detailed paragraph providing a comprehensive analysis of what these images represent as a collection]
+        \nDescription: [A detailed paragraph providing a comprehensive analysis of what these images represent as a collection, considering both the images and previous analyses]
         \nKey Points:
         \n- [Important insight or connection 1]
         \n- [Important insight or connection 2]
