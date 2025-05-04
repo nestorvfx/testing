@@ -1,0 +1,567 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Camera } from 'expo-camera';
+
+// Components
+import CameraView from './components/camera/CameraView';
+import CaptureButton from './components/camera/CaptureButton';
+import CardGroup from './components/cards/CardGroup';
+import ExpandedCard from './components/cards/ExpandedCard';
+import ErrorView from './components/ui/ErrorView';
+import { LoadingPermissionView, MediaPermissionView, DeniedPermissionView } from './components/ui/PermissionViews';
+import AnalyzeButton from './components/ui/AnalyzeButton';
+import DeepAnalysisButton from './components/ui/DeepAnalysisButton';
+import DeepAnalysisDialog from './components/ui/DeepAnalysisDialog';
+import DeepAnalysisResults from './components/ui/DeepAnalysisResults';
+import NewAnalysisPromptModal from './components/ui/NewAnalysisPromptModal';
+// Import the new components
+import VoiceButton from './components/ui/VoiceButton';
+import ImmediateAnalysisButton from './components/ui/ImmediateAnalysisButton';
+import SpeechWaveVisualizer from './components/ui/SpeechWaveVisualizer';
+
+// Hooks
+import { useCamera } from './hooks/useCamera';
+import { usePermissions } from './hooks/usePermissions';
+import { useCardStack } from './hooks/useCardStack';
+
+// Services
+import { analyzeImages, performDeepAnalysis } from './services/perplexityService';
+
+// Styles and constants
+import { styles } from './styles';
+import { isWeb } from './constants';
+
+// Ignore specific warnings that might be coming from Expo Camera
+LogBox.ignoreLogs(['ViewPropTypes']);
+
+export default function App() {
+  // State for device dimensions
+  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
+  
+  // Use our custom hooks
+  const {
+    cameraReady, setCameraReady, isCapturing, cameraError, setCameraError,
+    cameraRef, captureButtonScale, capturePhoto
+  } = useCamera();
+  
+  const {
+    hasPermission, mediaPermissionOnly, permissionError,
+    requestMediaPermissionOnly, retryPermissions
+  } = usePermissions();
+  
+  const {
+    captures, addCapture, isCardsExpanded, expandedCardIndex,
+    toggleCardGroup, expandCard, collapseCard, handleOutsideClick, 
+    scrollCards, scrollViewRef, cardAnimation, cardGroupBackgroundOpacity, 
+    panResponder, cardGroupStyles, expandAnimation
+  } = useCardStack(dimensions);
+
+  // Add state for voice recognition and immediate analysis
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isImmediateAnalysisActive, setIsImmediateAnalysisActive] = useState(false);
+  const [spokenPrompt, setSpokenPrompt] = useState('');
+  const [isVoiceCapturing, setIsVoiceCapturing] = useState(false);
+  const [speechVolume, setSpeechVolume] = useState(0); // Add speech volume state for visualizer
+
+  // Add state for analysis tracking
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  
+  // Global button disable tracking - helps prevent multiple captures
+  const [captureDisabled, setCaptureDisabled] = useState(false);
+
+  // Calculate unanalyzed images count
+  const unanalyzedCount = captures.filter(img => !img.analyzed).length;
+
+  // Listen for dimension changes
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setDimensions(window);
+    });
+    
+    return () => subscription.remove();
+  }, []);
+
+  // Add debugging state
+  const [debugInfo, setDebugInfo] = useState([]);
+  const debugEnabled = true; // Toggle this to enable/disable debugging
+  const captureUriMapRef = useRef(new Map()); // Track photo URIs across operations
+  
+  // Debug logging helper
+  const debugLog = useCallback((message, data = null) => {
+    if (!debugEnabled) return;
+    
+    const timestamp = new Date().toISOString().substr(11, 8);
+    console.log(`[DEBUG ${timestamp}] ${message}`, data || '');
+    
+    setDebugInfo(prev => {
+      // Keep only the last 20 messages
+      const newLogs = [...prev, { timestamp, message, data }];
+      if (newLogs.length > 20) return newLogs.slice(-20);
+      return newLogs;
+    });
+  }, []);
+  
+  // Handle photo capture and add to stack
+  const handleCapturePhoto = async (customPrompt = '') => {
+    // Prevent capture if analysis is in progress or capture disabled
+    if (isAnalyzing || captureDisabled) {
+      console.log('Analysis in progress or button disabled, capture prevented');
+      return;
+    }
+
+    // Set a disable state to prevent multiple captures
+    setCaptureDisabled(true);
+    
+    try {
+      const photo = await capturePhoto();
+      if (photo) {
+        // Add custom prompt to photo if provided
+        const photoWithPrompt = customPrompt ? { ...photo, customPrompt } : photo;
+        const photoUri = photoWithPrompt.uri;
+        
+        console.log('Captured photo with URI:', photoUri);
+        
+        // Add the photo to captures first
+        addCapture(photoWithPrompt);
+        
+        // Wait for state update to complete
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // If immediate analysis is active, analyze this photo right away
+        if (isImmediateAnalysisActive) {
+          setIsAnalyzing(true);
+          
+          try {
+            console.log('Starting immediate analysis with captures count:', captures.length);
+            
+            // CRITICAL FIX: Store a copy of the captures array with our new photo
+            const analysisCapturesArray = [...captures];
+            const photoIndex = analysisCapturesArray.findIndex(p => p.uri === photoUri);
+            
+            if (photoIndex === -1) {
+              console.log('Photo not found in captures array, using local copy for analysis');
+              // Use our local copy for analysis
+              analysisCapturesArray.push(photoWithPrompt);
+            }
+            
+            // Analyze just the new photo
+            console.log('Analyzing photo at effective index:', analysisCapturesArray.length - 1);
+            const analyzedResult = await analyzeImages([photoWithPrompt]);
+            
+            if (analyzedResult && analyzedResult.length > 0) {
+              const analyzedPhoto = analyzedResult[0];
+              console.log('Analysis complete, analyzed photo:', analyzedPhoto.uri);
+              
+              // IMPORTANT: Use a ref to store the analyzed photo for later use
+              const analyzedPhotoRef = { photo: analyzedPhoto, uri: photoUri };
+              
+              // Update state with new analyzed photo
+              // Get fresh reference to captures after analysis
+              const currentCaptures = [...captures];
+              console.log('Current captures after analysis count:', currentCaptures.length);
+              
+              // Create an array that guarantees it includes our analyzed photo
+              let updatedCaptures;
+              const existingIndex = currentCaptures.findIndex(cap => cap.uri === photoUri);
+              
+              if (existingIndex === -1) {
+                // Photo missing from captures, add it back
+                console.log('Photo missing from captures array, adding back');
+                updatedCaptures = [...currentCaptures, analyzedPhoto];
+              } else {
+                // Photo exists, update it
+                updatedCaptures = currentCaptures.map(cap => 
+                  cap.uri === analyzedPhoto.uri ? analyzedPhoto : cap
+                );
+              }
+              
+              console.log('Updating captures with analysis, new count:', updatedCaptures.length);
+              
+              // Update all captures
+              addCapture(null, updatedCaptures);
+              
+              // IMPORTANT: Wait longer for state to fully update before expanding card
+              setTimeout(() => {
+                // Get latest captures array directly from state
+                const finalCaptures = captures;
+                console.log('Final captures length before expansion:', finalCaptures.length);
+                
+                // Find our photo in the final captures array
+                const finalIndex = finalCaptures.findIndex(c => c.uri === photoUri);
+                
+                if (finalIndex !== -1) {
+                  console.log('Expanding card with index:', finalIndex, 'from', finalCaptures.length, 'cards');
+                  
+                  // First toggle card group to expanded mode if not already
+                  if (!isCardsExpanded) {
+                    console.log('Expanding card group first');
+                    toggleCardGroup();
+                    
+                    // Wait for card group animation to complete
+                    setTimeout(() => {
+                      console.log('Now expanding specific card:', finalIndex);
+                      expandCard(finalIndex);
+                    }, 300);
+                  } else {
+                    // Card group already expanded
+                    expandCard(finalIndex);
+                  }
+                } else {
+                  console.error('Failed to find analyzed photo in final captures array');
+                  // Fallback to manual index calculation as last resort
+                  const fallbackIndex = updatedCaptures.length - 1;
+                  if (fallbackIndex >= 0) {
+                    console.log('Using fallback index for expansion:', fallbackIndex);
+                    expandCard(fallbackIndex);
+                  }
+                }
+              }, 500); // Increased timeout to ensure state updates fully
+            }
+          } catch (error) {
+            console.error('Error analyzing image:', error);
+            Alert.alert(
+              'Analysis Error',
+              'Failed to analyze the captured image. You can try again or analyze it manually.'
+            );
+          } finally {
+            setIsAnalyzing(false);
+          }
+        }
+      }
+    } finally {
+      // Re-enable capture after a delay to prevent rapid clicks
+      setTimeout(() => {
+        setCaptureDisabled(false);
+      }, 1000);
+    }
+  };
+  
+  // Debug-enhanced regular analyze
+  const handleAnalyzeImages = async () => {
+    if (isAnalyzing || unanalyzedCount === 0) return;
+    
+    debugLog('Starting regular analysis', { captureCount: captures.length });
+    setIsAnalyzing(true);
+    
+    try {
+      const analyzedImages = await analyzeImages(captures);
+      debugLog('Regular analysis complete', { resultCount: analyzedImages.length });
+      
+      // Update captures with analyzed results
+      addCapture(null, analyzedImages); // Pass null as first param to replace all captures
+      debugLog('Captures updated with analysis results');
+    } catch (error) {
+      debugLog('Analysis error', { message: error.message });
+      console.error('Analysis error:', error);
+      setCameraError(new Error('Failed to analyze images: ' + error.message));
+    } finally {
+      setIsAnalyzing(false);
+      debugLog('Analysis state reset');
+    }
+  };
+
+  // Handle speech recognition result with better error handling
+  const handleSpeechResult = async (text, isFinalized = true, volume = 0) => {
+    console.log('Speech recognized:', text);
+    
+    if (!text || text.trim().length === 0) {
+      console.log('Empty speech result, ignoring');
+      return;
+    }
+    
+    setSpokenPrompt(text);
+    setSpeechVolume(volume); // Update volume for visualizer
+    
+    // Only take photo and set capturing state if this is the finalized result
+    // and we're not already analyzing or button is disabled
+    if (isFinalized && !isAnalyzing && !captureDisabled) {
+      setIsVoiceCapturing(true);
+      
+      try {
+        // Also disable capture button to prevent manual capture during voice capture
+        setCaptureDisabled(true);
+        
+        // Short delay to allow UI to update
+        setTimeout(async () => {
+          try {
+            // Capture photo with the spoken text as custom prompt
+            await handleCapturePhoto(text);
+          } catch (error) {
+            console.error('Error capturing photo with speech prompt:', error);
+            Alert.alert(
+              'Voice Capture Error',
+              'There was a problem capturing with your voice prompt. Please try again.'
+            );
+          } finally {
+            setIsVoiceCapturing(false);
+            setSpokenPrompt('');
+            setSpeechVolume(0); // Reset volume when done
+          }
+        }, 500);
+      } catch (error) {
+        console.error('Error in speech result handling:', error);
+        setIsVoiceCapturing(false);
+        setSpokenPrompt('');
+        setSpeechVolume(0);
+      }
+    }
+  };
+
+  // Deep analysis states
+  const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
+  const [deepAnalyses, setDeepAnalyses] = useState([]);
+  const [isDeepAnalysisResultsVisible, setIsDeepAnalysisResultsVisible] = useState(false);
+  const [isPromptModalVisible, setIsPromptModalVisible] = useState(false);
+  
+  // Function to handle deep analysis
+  const handleDeepAnalysis = useCallback(async (userPrompt = "") => {
+    if (captures.length === 0) {
+      Alert.alert("No Captures", "Please capture at least one image before analyzing.");
+      return;
+    }
+    
+    setIsDeepAnalyzing(true);
+    
+    try {
+      const result = await performDeepAnalysis(captures, userPrompt);
+      
+      if (result && !result.error) {
+        // Add new analysis to the list
+        setDeepAnalyses(prevAnalyses => [...prevAnalyses, result]);
+        // Ensure the results view is visible
+        setIsDeepAnalysisResultsVisible(true);
+      } else {
+        Alert.alert(
+          "Analysis Failed", 
+          result?.description || "An unknown error occurred during deep analysis."
+        );
+      }
+    } catch (error) {
+      console.error("Error during deep analysis:", error);
+      Alert.alert("Analysis Error", "Failed to perform deep analysis. Please try again.");
+    } finally {
+      setIsDeepAnalyzing(false);
+    }
+  }, [captures]);
+  
+  // Open prompt modal for new analysis
+  const handleAddNewAnalysis = useCallback(() => {
+    setIsPromptModalVisible(true);
+  }, []);
+  
+  // Submit prompt for analysis
+  const handlePromptSubmit = useCallback((prompt) => {
+    setIsPromptModalVisible(false);
+    handleDeepAnalysis(prompt);
+  }, [handleDeepAnalysis]);
+  
+  // Add a debugging component
+  const DebugOverlay = () => {
+    if (!debugEnabled) return null;
+    
+    return (
+      <View style={{
+        position: 'absolute',
+        bottom: 100,
+        left: 10,
+        right: 10,
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        padding: 10,
+        borderRadius: 5,
+        maxHeight: 200,
+        zIndex: 999,
+      }}>
+        <Text style={{ color: 'white', marginBottom: 5 }}>
+          Captures: {captures.length} | Analyzing: {isAnalyzing ? 'Yes' : 'No'} | 
+          Expanded: {expandedCardIndex !== null ? expandedCardIndex : 'None'}
+        </Text>
+        <View style={{ height: 1, backgroundColor: '#555', marginVertical: 5 }} />
+        <ScrollView>
+          {debugInfo.map((log, index) => (
+            <View key={index} style={{ marginBottom: 3 }}>
+              <Text style={{ color: '#aaa', fontSize: 10 }}>{log.timestamp}</Text>
+              <Text style={{ color: 'white', fontSize: 12 }}>{log.message}</Text>
+              {log.data && <Text style={{ color: '#ffcc00', fontSize: 10 }}>
+                {JSON.stringify(log.data)}
+              </Text>}
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+  
+  // Main app UI
+  return (
+    <View style={styles.container}>
+      {/* Camera */}
+      <CameraView 
+        dimensions={dimensions}
+        cameraReady={cameraReady}
+        setCameraReady={setCameraReady}
+        setCameraError={setCameraError}
+        cameraRef={cameraRef}
+        isCapturing={isCapturing}
+      />
+      
+      {/* Speech wave visualizer */}
+      <SpeechWaveVisualizer 
+        isListening={isVoiceActive && !!spokenPrompt} 
+        text={spokenPrompt} 
+        volume={speechVolume} // Use the speech volume state
+      />
+      
+      {/* Voice capturing indicator */}
+      {isVoiceCapturing && (
+        <View style={[styles.recordingIndicator, { top: 70 }]}>
+          <Text style={styles.recordingText}>Processing: "{spokenPrompt}"</Text>
+        </View>
+      )}
+      
+      {/* Top control bar for voice and immediate analysis buttons */}
+      <View style={customStyles.topControlBar}>
+        <View style={customStyles.buttonGroup}>
+          <VoiceButton 
+            isActive={isVoiceActive}
+            onToggleActive={() => setIsVoiceActive(!isVoiceActive)}
+            onSpeechResult={(text, isFinalized, volume) => handleSpeechResult(text, isFinalized, volume)}
+            isAnalyzing={isAnalyzing || isVoiceCapturing} // Pass analyzing state to control when listening should pause
+          />
+          <ImmediateAnalysisButton 
+            isActive={isImmediateAnalysisActive} 
+            onToggle={() => setIsImmediateAnalysisActive(!isImmediateAnalysisActive)}
+            isAnalyzing={isAnalyzing}
+          />
+        </View>
+      </View>
+      
+      {/* Centered capture button */}
+      {!isCardsExpanded && (
+          <CaptureButton 
+            onPress={() => handleCapturePhoto()}
+            isCapturing={isCapturing}
+            disabled={!cameraReady || isAnalyzing || captureDisabled}
+            captureButtonScale={captureButtonScale}
+          />
+      )}
+      
+      {/* Expanded card view - will handle its own touch prevention */}
+      {expandedCardIndex !== null && captures[expandedCardIndex] && (
+        <ExpandedCard 
+          capture={captures[expandedCardIndex]}
+          cardAnimation={cardAnimation}
+          dimensions={dimensions}
+          collapseCard={collapseCard}
+        />
+      )}
+      
+      {/* Add debug info for expanded card (will be removed in production) */}
+      {Platform.OS === 'android' && (
+        <View style={{ 
+          position: 'absolute', 
+          top: 40, 
+          right: 10, 
+          zIndex: 9999,
+          backgroundColor: 'transparent'
+        }}>
+          <Text style={{ color: 'transparent', fontSize: 1 }}>
+            {`Card expanded: ${expandedCardIndex !== null}`}
+          </Text>
+        </View>
+      )}
+      
+      {/* Card group (compact or expanded) */}
+      <CardGroup 
+        isCardsExpanded={isCardsExpanded}
+        scrollViewRef={scrollViewRef}
+        captures={captures}
+        toggleCardGroup={toggleCardGroup}
+        expandCard={expandCard}
+        dimensions={dimensions} // Pass dimensions down
+      />
+      
+      {/* Analyze button */}
+      {captures.length > 0 && (
+        <AnalyzeButton 
+          onPress={handleAnalyzeImages}
+          isAnalyzing={isAnalyzing}
+          unanalyzedCount={unanalyzedCount}
+        />
+      )}
+      
+      {/* Deep Analysis Button */}
+      {captures.length > 0 && !isCardsExpanded && (
+        <DeepAnalysisButton 
+          onPress={() => {
+            if (deepAnalyses.length > 0) {
+              setIsDeepAnalysisResultsVisible(true);
+            } else {
+              handleAddNewAnalysis();
+            }
+          }}
+          isAnalyzing={isDeepAnalyzing}
+          hasDeepAnalysis={deepAnalyses.length > 0}
+        />
+      )}
+      
+      {/* Deep Analysis Results */}
+      {isDeepAnalysisResultsVisible && (
+        <DeepAnalysisResults 
+          analyses={deepAnalyses}
+          isAnalyzing={isDeepAnalyzing}
+          onClose={() => setIsDeepAnalysisResultsVisible(false)}
+          onAddNewAnalysis={handleAddNewAnalysis}
+        />
+      )}
+      
+      {/* New Analysis Prompt Modal */}
+      <NewAnalysisPromptModal
+        visible={isPromptModalVisible}
+        onClose={() => setIsPromptModalVisible(false)}
+        onSubmit={handlePromptSubmit}
+        imagesCount={captures.length}
+      />
+      
+      {/* Error display */}
+      {cameraError && <ErrorView error={cameraError} />}
+      
+      {/* Debug button for web */}
+      {isWeb && (
+        <TouchableOpacity 
+          style={styles.debugButton}
+          onPress={() => {
+            alert(JSON.stringify({
+              platformOS: Platform.OS,
+              cameraConstantsExists: !!Camera.Constants,
+              cameraTypeExists: !!Camera.Constants?.Type,
+              hasPermission
+            }, null, 2));
+          }}
+        >
+          <Text style={styles.debugButtonText}>?</Text>
+        </TouchableOpacity>
+      )}
+      
+      {/* Add debug overlay at the end */}
+      {debugEnabled && <DebugOverlay />}
+    </View>
+  );
+}
+
+// Additional styles for new components
+const customStyles = StyleSheet.create({
+  topControlBar: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    zIndex: 150,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  buttonGroup: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 25,
+    padding: 5,
+  },
+});

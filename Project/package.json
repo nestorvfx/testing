@@ -1,0 +1,41 @@
+{
+  "name": "perplexityscenecapture",
+  "version": "1.0.0",
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~5.0.4",
+    "@expo/vector-icons": "~14.1.0",
+    "expo": "~53.0.6",
+    "expo-av": "~15.1.4",
+    "expo-blur": "~14.1.4",
+    "expo-camera": "~16.1.6",
+    "expo-dev-client": "~5.1.7",
+    "expo-file-system": "~18.1.8",
+    "expo-image-manipulator": "~13.1.5",
+    "expo-linear-gradient": "~14.1.4",
+    "expo-media-library": "~17.1.6",
+    "expo-modules-core": "~2.3.12",
+    "expo-screen-orientation": "~8.1.5",
+    "expo-status-bar": "~2.2.3",
+    "expo-system-ui": "~5.0.7",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.2",
+    "react-native-android-speech": "file:./react-native-android-speech",
+    "react-native-gesture-handler": "~2.25.0",
+    "react-native-reanimated": "~3.17.5",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-web": "~0.20.0",
+    "expo-splash-screen": "~0.30.8"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0"
+  },
+  "private": true
+}

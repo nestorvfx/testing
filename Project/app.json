@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "PerplexitySceneCapture",
+    "slug": "PerplexitySceneCapture",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-media-library",
+      "expo-av",
+      "expo-system-ui"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to record video and capture images every 5 seconds.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save captured images.",
+        "NSMicrophoneUsageDescription": "This app needs access to your microphone for voice recognition.",
+        "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to capture voice prompts for image analysis."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "package": "com.nestorvfx.PhotoAndAnalyze"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a8f53beb-4f41-4e59-a748-99c6c0dd59bc"
+      }
+    }
+  }
+}
