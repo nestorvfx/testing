@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   },
   androidContainer: {
     // Enhance Android-specific styles
-    elevation: 8,
+    elevation: 1,
     zIndex: 10, // Higher zIndex on Android
     bottom: 70, // Adjust position slightly
     paddingVertical: 12, // Slightly larger for easier tapping

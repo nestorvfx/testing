@@ -279,42 +279,6 @@ export default function App() {
     handleDeepAnalysis(prompt);
   }, [handleDeepAnalysis]);
   
-  // Add a debugging component
-  const DebugOverlay = () => {
-    if (!debugEnabled) return null;
-    
-    return (
-      <View style={{
-        position: 'absolute',
-        bottom: 100,
-        left: 10,
-        right: 10,
-        backgroundColor: 'rgba(0,0,0,0.8)',
-        padding: 10,
-        borderRadius: 5,
-        maxHeight: 200,
-        zIndex: 999,
-      }}>
-        <Text style={{ color: 'white', marginBottom: 5 }}>
-          Captures: {captures.length} | Analyzing: {isAnalyzing ? 'Yes' : 'No'} | 
-          Expanded: {expandedCardIndex !== null ? expandedCardIndex : 'None'}
-        </Text>
-        <View style={{ height: 1, backgroundColor: '#555', marginVertical: 5 }} />
-        <ScrollView>
-          {debugInfo.map((log, index) => (
-            <View key={index} style={{ marginBottom: 3 }}>
-              <Text style={{ color: '#aaa', fontSize: 10 }}>{log.timestamp}</Text>
-              <Text style={{ color: 'white', fontSize: 12 }}>{log.message}</Text>
-              {log.data && <Text style={{ color: '#ffcc00', fontSize: 10 }}>
-                {JSON.stringify(log.data)}
-              </Text>}
-            </View>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  };
-  
   // Main app UI
   return (
     <View style={styles.container}>
@@ -465,9 +429,6 @@ export default function App() {
           <Text style={styles.debugButtonText}>?</Text>
         </TouchableOpacity>
       )}
-      
-      {/* Add debug overlay at the end */}
-      {debugEnabled && <DebugOverlay />}
     </View>
   );
 }

@@ -49,7 +49,7 @@ const CameraView = ({
   // Add platform-specific props
   if (!isWeb) {
     // For Android/iOS: Use correct props for the CameraView component
-    cameraProps.device = "front";
+    cameraProps.device = "back";
     
     // Add error handler
     cameraProps.onError = (error) => {
@@ -64,20 +64,7 @@ const CameraView = ({
     return (
       <CameraComponent {...cameraProps}>
         <View style={[styles.overlay, { transform: [{ scaleX: -1 }] }]}>
-          {/* Capture guide / crosshair to show the square center area */}
-          <View 
-            style={[ 
-              styles.captureGuide, 
-              { 
-                width: guideSize, 
-                height: guideSize,
-                top: guidePosition.top,
-                left: guidePosition.left,
-              }
-            ]} 
-          />
           
-          {/* Only show initialization message, remove all capturing indicators */}
           {!cameraReady && Platform.OS !== 'android' && (
             <View style={styles.initializing}>
               <Text style={styles.initializingText}>Initializing camera...</Text>

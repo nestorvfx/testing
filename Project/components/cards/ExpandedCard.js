@@ -159,6 +159,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.75)',
     zIndex: 2000,
+    elevation: 2
   },
   dismissOverlay: {
     position: 'absolute',

@@ -8,37 +8,25 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   const [speechText, setSpeechText] = useState('');
   const [error, setError] = useState('');
   const [isAvailable, setIsAvailable] = useState(false);
-  const [recognized, setRecognized] = useState('');
-  const [pitch, setPitch] = useState('');
-  const [end, setEnd] = useState('');
   const [volume, setVolume] = useState(0);
   
-  // Add silence detection refs
+  // Silence detection and error handling
   const silenceTimeoutRef = useRef(null);
   const lastSpeechTimestampRef = useRef(null);
-  const SILENCE_DURATION = 2000; // 2 seconds of silence before auto-capture
-
-  // Add cooldown state
   const [inCooldown, setInCooldown] = useState(false);
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
   const restartTimerRef = useRef(null);
-  const COOLDOWN_PERIOD = 1500; // 1.5 seconds between restart attempts
+  const SILENCE_DURATION = 2000;
+  const COOLDOWN_PERIOD = 1500;
   const MAX_CONSECUTIVE_ERRORS = 5;
 
-  // Check if voice recognition is available
+  // Check availability on mount
   useEffect(() => {
     const checkVoiceAvailability = async () => {
       try {
         const available = await VoiceService.isAvailable();
-        console.log('Speech recognition availability:', available);
         setIsAvailable(available);
-        
-        // On non-Android platforms, we need to show a platform compatibility message
-        if (!available && Platform.OS !== 'android') {
-          console.log('Speech recognition is only available on Android');
-        }
       } catch (e) {
-        console.error('Error checking voice availability:', e);
         setIsAvailable(false);
       }
     };
@@ -46,11 +34,10 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     checkVoiceAvailability();
   }, []);
 
-  // Set up speech recognition when available
+  // Set up speech recognition
   useEffect(() => {
     if (!isAvailable) return;
 
-    // Set up event handlers
     VoiceService.setup();
     VoiceService.onSpeechStart = onSpeechStart;
     VoiceService.onSpeechEnd = onSpeechEnd;
@@ -59,145 +46,80 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     VoiceService.onSpeechVolumeChanged = onSpeechVolumeChanged;
     VoiceService.onSpeechError = onSpeechError;
 
-    // Clean up listeners when component unmounts
     return () => {
       if (isListening) {
-        stopListening().catch(e => console.error('Error stopping listening during cleanup:', e));
+        stopListening().catch(() => {});
       }
       
       if (isAvailable) {
         VoiceService.destroy();
       }
       
-      // Clear any pending timeouts
       if (silenceTimeoutRef.current) {
         clearTimeout(silenceTimeoutRef.current);
       }
     };
   }, [isAvailable]);
 
-  // Add effect to start/stop listening based on isActive state
+  // Handle active state changes
   useEffect(() => {
-    if (isActive && isAvailable && Platform.OS === 'android') {
-      // Start listening when activated
-      startListening().catch(e => console.error('Error starting automatic listening:', e));
+    if (isActive && isAvailable && Platform.OS === 'android' && !isListening && !inCooldown && !isAnalyzing) {
+      startListening().catch(() => {});
     } else if (!isActive && isListening) {
-      // Stop listening when deactivated
-      stopListening().catch(e => console.error('Error stopping listening on deactivation:', e));
+      stopListening().catch(() => {});
     }
-  }, [isActive, isAvailable]);
+  }, [isActive, isAvailable, isListening, inCooldown]);
 
-  // Add effect to handle analysis state
+  // Handle analysis state
   useEffect(() => {
-    // Pause listening during analysis
     if (isAnalyzing && isListening) {
-      console.log('Pausing speech recognition during analysis');
-      stopListening().catch(e => console.error('Error stopping during analysis:', e));
-    } 
-    // Resume listening after analysis if active, not in cooldown, and not listening yet
-    else if (!isAnalyzing && isActive && !isListening && isAvailable && 
-             Platform.OS === 'android' && !inCooldown) {
-      console.log('Resuming speech recognition after analysis');
-      startListening().catch(e => console.error('Error resuming after analysis:', e));
+      stopListening().catch(() => {});
+    } else if (!isAnalyzing && isActive && !isListening && isAvailable && 
+              Platform.OS === 'android' && !inCooldown) {
+      startListening().catch(() => {});
     }
   }, [isAnalyzing, isActive, isListening, inCooldown]);
 
-  // Effect to start/stop listening when isActive changes
-  useEffect(() => {
-    // When button becomes active, start listening
-    if (isActive && isAvailable && Platform.OS === 'android' && !isListening && !isAnalyzing) {
-      console.log('VoiceButton activated - starting initial listening');
-      startListening().catch(e => console.error('Error starting listening on activation:', e));
-    } 
-    // When button becomes inactive, stop listening
-    else if (!isActive && isListening) {
-      console.log('VoiceButton deactivated - stopping listening');
-      stopListening().catch(e => console.error('Error stopping listening on deactivation:', e));
-    }
-  }, [isActive, isAvailable]); // Only depend on these props, not listening state
-
-  // Separate effect to handle analysis state
-  useEffect(() => {
-    // Pause listening during analysis
-    if (isAnalyzing && isListening) {
-      console.log('Pausing speech recognition during analysis');
-      stopListening().catch(e => console.error('Error stopping during analysis:', e));
-    } 
-    // Resume listening after analysis if button is still active
-    else if (!isAnalyzing && isActive && !isListening && isAvailable && Platform.OS === 'android') {
-      console.log('Resuming speech recognition after analysis');
-      startListening().catch(e => console.error('Error resuming after analysis:', e));
-    }
-  }, [isAnalyzing, isActive]);
-
-  // Reset all state values
+  // Reset state
   const resetState = () => {
-    setRecognized('');
-    setPitch('');
     setError('');
-    setEnd('');
     setSpeechText('');
     setVolume(0);
-    // Keep isListening as is, will be set separately
     
-    // Clear any pending timeouts
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
     }
   };
 
-  // Handle speech recognition events
+  // Speech event handlers
   const onSpeechStart = (e) => {
-    console.log('Speech started', e);
-    setEnd('');
     setError('');
-    setConsecutiveErrors(0); // Reset error count when speech starts successfully
     lastSpeechTimestampRef.current = Date.now();
+    setConsecutiveErrors(0);
     
-    // Clear any pending silence timeouts since speech has started
     if (silenceTimeoutRef.current) {
       clearTimeout(silenceTimeoutRef.current);
       silenceTimeoutRef.current = null;
     }
+    
     if (restartTimerRef.current) {
       clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;
     }
   };
-  
-  const onSpeechRecognized = (e) => {
-    console.log('Speech recognized event:', e);
-    setRecognized('√');
-    lastSpeechTimestampRef.current = Date.now();
-  };
 
   const onSpeechEnd = (e) => {
-    console.log('Speech ended', e);
-    setEnd('√');
+    if (isAnalyzing) return;
     
-    // Only proceed with auto-capture if we're not analyzing
-    if (isAnalyzing) {
-      console.log('Analysis in progress, speech capture prevented');
-      return;
-    }
-    
-    // Set up a timeout to capture after silence
     silenceTimeoutRef.current = setTimeout(() => {
-      if (speechText && !isAnalyzing) { // Double-check not analyzing
-        console.log('Auto-capturing after silence:', speechText);
-        
-        // Pass the final speech text to parent with volume=0 since speech ended
+      if (speechText && !isAnalyzing) {
         onSpeechResult(speechText, true, 0);
         setSpeechText('');
         
-        // Restart listening after processing with a delay to avoid overlapping processes
         setTimeout(() => {
-          if (isActive && !isAnalyzing && !isListening) {
-            console.log('Restarting listening after auto-capture');
-            startListening().catch(err => 
-              console.error('Error restarting listening after capture:', err)
-            );
+          if (isActive && !isAnalyzing && !isListening && !inCooldown) {
+            startListening().catch(() => {});
           }
         }, 1000);
       }
@@ -205,23 +127,19 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   };
 
   const onSpeechResults = (e) => {
-    console.log('Speech results:', e);
     lastSpeechTimestampRef.current = Date.now();
     
     if (e.value && e.value.length > 0) {
       const recognizedText = e.value[0];
-      console.log('Speech recognized:', recognizedText);
       setSpeechText(recognizedText);
     }
   };
   
   const onSpeechPartialResults = (e) => {
-    console.log('Partial result:', e);
     lastSpeechTimestampRef.current = Date.now();
     
     if (e.value && e.value.length > 0) {
       const partialText = e.value[0];
-      // Only update the speechText if it's significantly different
       if (partialText.length > 3 && (!speechText || partialText.length > speechText.length)) {
         setSpeechText(partialText);
       }
@@ -229,14 +147,10 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   };
   
   const onSpeechVolumeChanged = (e) => {
-    // Update volume for the wave visualization
     if (Platform.OS === 'android' && e && e.value !== undefined) {
-      // Scale from 0-10 to 0-100 for the visualizer
       const normalizedVolume = Math.min(e.value * 10, 100);
       setVolume(normalizedVolume);
-      setPitch(e.value);
       
-      // Also pass volume to parent component for visualization
       if (speechText && onSpeechResult) {
         onSpeechResult(speechText, false, normalizedVolume);
       }
@@ -244,56 +158,50 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   };
 
   const onSpeechError = (e) => {
-    console.error('Speech recognition error:', e);
+    setConsecutiveErrors(prev => prev + 1);
     
-    // We only care about tracking true errors, not normal recognition failures
-    const isBenignError = e && e.error && (
-      e.error.code === 7 || // No recognition matches - normal
-      e.error.code === 5    // Client side error - usually temporary
+    const isCommonError = e.error && (
+      e.error.code === 7 || 
+      e.error.code === 5
     );
-
-    if (isBenignError) {
-      // For benign errors, silently restart if still active
-      console.log(`Common error (code ${e.error ? e.error.code : 'unknown'}), handling silently`);
+    
+    if (isCommonError) {
+      setInCooldown(true);
       setIsListening(false);
       
-      // Short delay before restarting
-      setTimeout(() => {
-        if (isActive && !isAnalyzing && isAvailable && Platform.OS === 'android') {
-          console.log('Auto-restarting after benign error');
-          startListening().catch(e => {
-            console.error('Error restarting listening after benign error:', e);
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current);
+      }
+      
+      const backoffTime = Math.min(COOLDOWN_PERIOD * Math.pow(1.5, Math.min(consecutiveErrors, 4)), 10000);
+      
+      restartTimerRef.current = setTimeout(() => {
+        setInCooldown(false);
+        if (isActive && !isAnalyzing && consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+          startListening().catch(() => {
+            setTimeout(() => setInCooldown(false), 3000);
           });
+        } else if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          setTimeout(() => setConsecutiveErrors(0), 15000);
         }
-      }, 300);
+      }, backoffTime);
+      
       return;
     }
     
-    // For serious errors, try to restart but show the error
     setError('Recognition error. Restarting...');
     setIsListening(false);
     
-    // Try to restart after a short delay
     setTimeout(() => {
       if (isActive && !isAnalyzing && isAvailable && Platform.OS === 'android') {
-        console.log('Restarting listening after error');
-        startListening().catch(e => {
-          console.error('Error restarting listening after error:', e);
-        });
+        startListening().catch(() => {});
       }
     }, 1000);
   };
 
-  // Start recognition with additional safeguards
+  // Start listening
   const startListening = async () => {
-    if (!isAvailable || isAnalyzing || inCooldown) {
-      console.log(`Cannot start listening - available: ${isAvailable}, analyzing: ${isAnalyzing}, cooldown: ${inCooldown}`);
-      return;
-    }
-    
-    // Prevent multiple simultaneous start attempts
-    if (isListening) {
-      console.log('Already listening, skipping start attempt');
+    if (!isAvailable || isAnalyzing || inCooldown || isListening) {
       return;
     }
     
@@ -303,11 +211,9 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     try {
       await VoiceService.start('en_US');
     } catch (e) {
-      console.error('Error starting voice recognition:', e);
       setError(`Error: ${e.message || 'Unknown error'}`);
       setIsListening(false);
       
-      // Don't show alerts for every restart attempt or common errors
       if (!e.message || (!e.message.includes('already started') && !e.message.includes('cooldown'))) {
         Alert.alert(
           'Voice Recognition Error', 
@@ -326,37 +232,17 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       await VoiceService.stop();
       setIsListening(false);
       
-      // Clear any pending timeouts
       if (silenceTimeoutRef.current) {
         clearTimeout(silenceTimeoutRef.current);
         silenceTimeoutRef.current = null;
       }
     } catch (e) {
-      console.error('Error stopping voice recognition:', e);
+      // Error stopping
     }
   };
 
-  // Cancel listening
-  const cancelListening = async () => {
-    if (!isAvailable) return;
-    
-    try {
-      await VoiceService.cancel();
-      setIsListening(false);
-      
-      // Clear any pending timeouts
-      if (silenceTimeoutRef.current) {
-        clearTimeout(silenceTimeoutRef.current);
-        silenceTimeoutRef.current = null;
-      }
-    } catch (e) {
-      console.error('Error canceling voice recognition:', e);
-    }
-  };
-
-  // Toggle active state instead of listening state
-  const toggleActive = async () => {
-    // Platform-specific message for non-Android devices
+  // Toggle active state
+  const toggleActive = () => {
     if (Platform.OS !== 'android') {
       Alert.alert(
         'Not Available',
@@ -366,7 +252,6 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       return;
     }
     
-    // Check if voice recognition is available
     if (!isAvailable) {
       Alert.alert(
         'Voice Recognition Unavailable',
@@ -376,20 +261,18 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       return;
     }
 
-    // Toggle the active state via parent's callback
     onToggleActive();
   };
 
-  // Determine the button icon and style based on active, listening, and cooldown states
+  // Button icon and style getters
   const getButtonIcon = () => {
     if (!isAvailable || Platform.OS !== 'android') return "mic-off";
     if (!isActive) return "mic-off";
-    if (inCooldown) return "mic-outline"; // Use outline during cooldown
+    if (inCooldown) return "mic-outline";
     if (isListening) return "mic";
     return "mic-outline";
   };
 
-  // Visual indication of states
   const getButtonStyle = () => {
     if (!isAvailable || Platform.OS !== 'android') return styles.unavailable;
     if (!isActive) return styles.inactive;
@@ -399,7 +282,6 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     return styles.active;
   };
 
-  // Return the button based on platform and availability
   return (
     <TouchableOpacity
       style={[
@@ -427,10 +309,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         />
       )}
       
-      {/* Export speech state for parent components with volume */}
-      <React.Fragment>
-        {onSpeechResult && isListening && speechText && onSpeechResult(speechText, false, volume)}
-      </React.Fragment>
+      {onSpeechResult && isListening && speechText && onSpeechResult(speechText, false, volume)}
     </TouchableOpacity>
   );
 };
@@ -458,8 +337,19 @@ const styles = StyleSheet.create({
   listening: {
     backgroundColor: '#e91e63',
   },
+  analyzing: {
+    backgroundColor: '#FF9800',
+  },
+  cooldown: {
+    backgroundColor: '#9C27B0',
+    opacity: 0.6,
+  },
   listeningContainer: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cooldownContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -469,18 +359,7 @@ const styles = StyleSheet.create({
   unavailable: {
     backgroundColor: '#ccc',
     opacity: 0.7,
-  },
-  analyzing: {
-    backgroundColor: '#FF9800', // Orange color for analyzing state
-  },
-  cooldown: {
-    backgroundColor: '#9C27B0', // Purple with reduced opacity for cooldown
-    opacity: 0.6,
-  },
-  cooldownContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  }
 });
 
 export default VoiceButton;
