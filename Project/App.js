@@ -6,6 +6,7 @@ import { Camera } from 'expo-camera';
 import CameraView from './components/camera/CameraView';
 import CaptureButton from './components/camera/CaptureButton';
 import CardGroup from './components/cards/CardGroup';
+import CardStack from './components/cards/CardStack'; // Add this import
 import ExpandedCard from './components/cards/ExpandedCard';
 import ErrorView from './components/ui/ErrorView';
 import { LoadingPermissionView, MediaPermissionView, DeniedPermissionView } from './components/ui/PermissionViews';
@@ -358,15 +359,26 @@ export default function App() {
         </View>
       )}
       
-      {/* Card group (compact or expanded) */}
-      <CardGroup 
-        isCardsExpanded={isCardsExpanded}
-        scrollViewRef={scrollViewRef}
-        captures={captures}
-        toggleCardGroup={toggleCardGroup}
-        expandCard={expandCard}
-        dimensions={dimensions} // Pass dimensions down
-      />
+      {/* Render CardGroup for expanded mode only */}
+      {isCardsExpanded ? (
+        <CardGroup 
+          isCardsExpanded={isCardsExpanded}
+          scrollViewRef={scrollViewRef}
+          captures={captures}
+          toggleCardGroup={toggleCardGroup}
+          expandCard={expandCard}
+          dimensions={dimensions}
+        />
+      ) : null}
+      
+      {/* Render CardStack only when not expanded */}
+      {!isCardsExpanded && captures.length > 0 && (
+        <CardStack 
+          captures={captures} 
+          toggleCardGroup={toggleCardGroup} 
+          dimensions={dimensions}
+        />
+      )}
       
       {/* Analyze button */}
       {captures.length > 0 && (

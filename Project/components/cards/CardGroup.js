@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from 'react';
 import { View, TouchableOpacity, Image, Text, Dimensions, Animated, ScrollView, Platform } from 'react-native';
-import CardStack from './CardStack';
 
 const CardGroup = ({ 
   isCardsExpanded,
@@ -90,15 +89,7 @@ const CardGroup = ({
         </TouchableOpacity>
       )}
       
-      {!isCardsExpanded ? (
-        captures && captures.length > 0 ? (
-          <CardStack 
-            captures={captures} 
-            toggleCardGroup={toggleCardGroup} 
-            dimensions={dimensions}
-          />
-        ) : null
-      ) : (
+      {isCardsExpanded ? (
         <View style={{ width: '100%', height: '100%' }}>
           <ScrollView
             ref={scrollViewRef}
@@ -226,7 +217,7 @@ const CardGroup = ({
             <Text style={{top: arrowTextTop, color: 'white', fontSize: 24, fontWeight: 'bold' }}>→</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
     </View>
   );
 };

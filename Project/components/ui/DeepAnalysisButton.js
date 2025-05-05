@@ -64,7 +64,7 @@ const DeepAnalysisButton = ({ onPress, isAnalyzing, hasDeepAnalysis }) => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 70,
+    bottom: 55,
     right: 20,
     backgroundColor: '#8E44AD',
     paddingVertical: 10,
@@ -108,8 +108,8 @@ const styles = StyleSheet.create({
   androidContainer: {
     // Enhance Android-specific styles
     elevation: 1,
-    zIndex: 10, // Higher zIndex on Android
-    bottom: 70, // Adjust position slightly
+    zIndex: 3000, // Higher zIndex on Android
+    bottom: 50, // Adjust position slightly
     paddingVertical: 12, // Slightly larger for easier tapping
   },
   androidTouchHelper: {

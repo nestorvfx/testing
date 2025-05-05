@@ -8,7 +8,7 @@ const CaptureButton = ({ onPress, isCapturing, disabled, captureButtonScale }) =
     return (
       <View style={{
         position: 'absolute',
-        bottom: 60,
+        bottom: 40,
         zIndex: 999,
         alignItems: 'center',
         justifyContent: 'center',
@@ -47,7 +47,7 @@ const CaptureButton = ({ onPress, isCapturing, disabled, captureButtonScale }) =
     <Animated.View style={{
       transform: [{ scale: captureButtonScale }],
       position: 'absolute',
-      bottom: 60,
+      bottom: 45,
       zIndex: 50,
       alignItems: 'center',
       justifyContent: 'center',
