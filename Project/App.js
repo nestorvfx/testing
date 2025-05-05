@@ -50,7 +50,7 @@ export default function App() {
   } = usePermissions();
   
   const {
-    captures, addCapture, isCardsExpanded, expandedCardIndex,
+    captures, addCapture, updateCaptures, isCardsExpanded, expandedCardIndex,
     toggleCardGroup, expandCard, collapseCard, handleOutsideClick, 
     scrollCards, scrollViewRef, cardAnimation, cardGroupBackgroundOpacity, 
     panResponder, cardGroupStyles, expandAnimation
@@ -105,7 +105,7 @@ export default function App() {
   const handleCapturePhoto = async (customPrompt = '') => {
     // Prevent capture if analysis is in progress or capture disabled
     if (isAnalyzing || captureDisabled) {
-      console.log('Analysis in progress or button disabled, capture prevented');
+      console.log('Analysis in progress or capture prevented');
       return;
     }
 
@@ -120,103 +120,27 @@ export default function App() {
         const photoUri = photoWithPrompt.uri;
         
         console.log('Captured photo with URI:', photoUri);
-        
-        // Add the photo to captures first
+                
+        // Add the photo to captures - UPDATED to use new API
         addCapture(photoWithPrompt);
-        
-        // Wait for state update to complete
-        await new Promise(resolve => setTimeout(resolve, 300));
         
         // If immediate analysis is active, analyze this photo right away
         if (isImmediateAnalysisActive) {
+          // Wait a moment for state to update
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
           setIsAnalyzing(true);
           
-          try {
-            console.log('Starting immediate analysis with captures count:', captures.length);
-            
-            // CRITICAL FIX: Store a copy of the captures array with our new photo
-            const analysisCapturesArray = [...captures];
-            const photoIndex = analysisCapturesArray.findIndex(p => p.uri === photoUri);
-            
-            if (photoIndex === -1) {
-              console.log('Photo not found in captures array, using local copy for analysis');
-              // Use our local copy for analysis
-              analysisCapturesArray.push(photoWithPrompt);
-            }
-            
+          try {            
             // Analyze just the new photo
-            console.log('Analyzing photo at effective index:', analysisCapturesArray.length - 1);
             const analyzedResult = await analyzeImages([photoWithPrompt]);
             
-            if (analyzedResult && analyzedResult.length > 0) {
-              const analyzedPhoto = analyzedResult[0];
-              console.log('Analysis complete, analyzed photo:', analyzedPhoto.uri);
-              
-              // IMPORTANT: Use a ref to store the analyzed photo for later use
-              const analyzedPhotoRef = { photo: analyzedPhoto, uri: photoUri };
-              
-              // Update state with new analyzed photo
-              // Get fresh reference to captures after analysis
-              const currentCaptures = [...captures];
-              console.log('Current captures after analysis count:', currentCaptures.length);
-              
-              // Create an array that guarantees it includes our analyzed photo
-              let updatedCaptures;
-              const existingIndex = currentCaptures.findIndex(cap => cap.uri === photoUri);
-              
-              if (existingIndex === -1) {
-                // Photo missing from captures, add it back
-                console.log('Photo missing from captures array, adding back');
-                updatedCaptures = [...currentCaptures, analyzedPhoto];
-              } else {
-                // Photo exists, update it
-                updatedCaptures = currentCaptures.map(cap => 
-                  cap.uri === analyzedPhoto.uri ? analyzedPhoto : cap
-                );
-              }
-              
-              console.log('Updating captures with analysis, new count:', updatedCaptures.length);
-              
-              // Update all captures
-              addCapture(null, updatedCaptures);
-              
-              // IMPORTANT: Wait longer for state to fully update before expanding card
-              setTimeout(() => {
-                // Get latest captures array directly from state
-                const finalCaptures = captures;
-                console.log('Final captures length before expansion:', finalCaptures.length);
+            const analyzedPhoto = analyzedResult[0];
+            console.log('Analysis complete, analyzed photo:', analyzedPhoto.uri);
+            
+            updateCaptures([...captures, analyzedPhoto]);
                 
-                // Find our photo in the final captures array
-                const finalIndex = finalCaptures.findIndex(c => c.uri === photoUri);
-                
-                if (finalIndex !== -1) {
-                  console.log('Expanding card with index:', finalIndex, 'from', finalCaptures.length, 'cards');
-                  
-                  // First toggle card group to expanded mode if not already
-                  if (!isCardsExpanded) {
-                    console.log('Expanding card group first');
-                    toggleCardGroup();
-                    
-                    // Wait for card group animation to complete
-                    setTimeout(() => {
-                      console.log('Now expanding specific card:', finalIndex);
-                      expandCard(finalIndex);
-                    }, 300);
-                  } else {
-                    // Card group already expanded
-                    expandCard(finalIndex);
-                  }
-                } else {
-                  console.error('Failed to find analyzed photo in final captures array');
-                  // Fallback to manual index calculation as last resort
-                  const fallbackIndex = updatedCaptures.length - 1;
-                  if (fallbackIndex >= 0) {
-                    console.log('Using fallback index for expansion:', fallbackIndex);
-                    expandCard(fallbackIndex);
-                  }
-                }
-              }, 500); // Increased timeout to ensure state updates fully
-            }
+            expandCard(captures.length);
           } catch (error) {
             console.error('Error analyzing image:', error);
             Alert.alert(
@@ -229,7 +153,7 @@ export default function App() {
         }
       }
     } finally {
-      // Re-enable capture after a delay to prevent rapid clicks
+      // Re-enable capture after a delay
       setTimeout(() => {
         setCaptureDisabled(false);
       }, 1000);
@@ -247,8 +171,8 @@ export default function App() {
       const analyzedImages = await analyzeImages(captures);
       debugLog('Regular analysis complete', { resultCount: analyzedImages.length });
       
-      // Update captures with analyzed results
-      addCapture(null, analyzedImages); // Pass null as first param to replace all captures
+      // Update captures with analyzed results - UPDATED
+      updateCaptures(analyzedImages); // Pass null as first param to replace all captures
       debugLog('Captures updated with analysis results');
     } catch (error) {
       debugLog('Analysis error', { message: error.message });

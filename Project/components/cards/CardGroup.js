@@ -86,11 +86,11 @@ const CardGroup = ({
         <TouchableOpacity
           style={{
             position: 'absolute',
-            top: 10,
+            top: -10,
             right: 10,
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            width: 28,
-            height: 28,
+            backgroundColor: 'rgba(0, 0, 0, 0.0)',
+            width: 20,
+            height: 20,
             borderRadius: 14,
             justifyContent: 'center',
             alignItems: 'center',
@@ -138,12 +138,12 @@ const CardGroup = ({
               const cardViewportPosition = Animated.subtract(cardPosition, scrollX);
               
               // Define the fade zones relative to the viewport - adjusted for better visibility on both sides
-              const leftFadeZoneStart = -itemSize * 0.5; // Start fade when card is halfway off-screen
-              const leftFadeZoneEnd = contentPadding * 0.1; // End fade at 1/4 of the padding (smaller fade zone)
+              const leftFadeZoneStart = -itemSize * 1.0; // Start fade when card is halfway off-screen
+              const leftFadeZoneEnd = -contentPadding * 0.2; // End fade at 1/4 of the padding (smaller fade zone)
               
               // Right fade zone - start fade earlier
-              const rightFadeZoneStart = screenWidth - contentPadding/2 - itemSize - fadeZoneWidth * 0.2; // Start fade zone much earlier
-              const rightFadeZoneEnd = screenWidth - contentPadding/2 - itemSize * 0.75; // End fade with 30% of card still visible
+              const rightFadeZoneStart = screenWidth - contentPadding/2 - itemSize - fadeZoneWidth * 1.0; // Start fade zone much earlier
+              const rightFadeZoneEnd = screenWidth - contentPadding/2 - itemSize * 1.0; // End fade with 30% of card still visible
               
               // Create opacity interpolation based on the card's position in the viewport
               const cardOpacity = cardViewportPosition.interpolate({
@@ -174,10 +174,10 @@ const CardGroup = ({
                     style={{
                       width: itemSize,
                       height: itemSize,
-                      backgroundColor: 'white',
+                      backgroundColor: 'transparent',
                       borderRadius: Math.max(8, Math.min(14, itemSize * 0.12)), // Responsive border radius
                       overflow: 'hidden',
-                      shadowColor: '#000',
+                      shadowColor: 'transparent',
                       shadowOffset: { width: 0, height: 2 },
                       shadowOpacity: 0.3,
                       shadowRadius: 2,
@@ -228,7 +228,7 @@ const CardGroup = ({
               color: 'rgba(255,255,255,0.6)',
               fontSize: 12,
               fontStyle: 'italic'
-            }}>Swipe to browse</Text>
+            }}></Text>
           </View>
           
           {/* Left arrow - with better styling */}
@@ -248,7 +248,7 @@ const CardGroup = ({
             }}
             onPress={() => scrollInDirection('left')}
           >
-            <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>←</Text>
+            <Text style={{ top:-4, color: 'white', fontSize: 24, fontWeight: 'bold' }}>←</Text>
           </TouchableOpacity>
           
           {/* Right arrow - with better styling */}

@@ -22,18 +22,24 @@ export const useCardStack = (dimensions) => {
     return false;
   }, [captures]);
 
-  // Modified addCapture function to ensure state is properly updated
-  const addCapture = useCallback((newCapture, replacementCaptures = null) => {
-    if (replacementCaptures) {
-      console.log(`Updating ${replacementCaptures.length} captures`);
-      setCaptures(replacementCaptures);
-    } else if (newCapture) {
-      console.log(`Adding capture to stack: ${newCapture?.uri?.substring(0, 20)}...`);
-      setCaptures(prev => [...prev, newCapture]);
-    }
+  // Split into two clear, focused functions instead of one overloaded function
+  const addCapture = useCallback((newCapture) => {
+    if (!newCapture) return;
+    setCaptures(prev => [...prev, newCapture]);
   }, []);
   
-  // Toggle card group function needs to be more robust
+  const updateCaptures = useCallback((capturesArray) => {
+    if (!capturesArray) return;
+    setCaptures(capturesArray);
+  }, []);
+  
+  // Define collapseCard BEFORE it's used in toggleCardGroup
+  const collapseCard = useCallback(() => {
+    console.log("Collapsing card");
+    setExpandedCardIndex(null);
+  }, []);
+  
+  // Now toggleCardGroup can safely reference collapseCard
   const toggleCardGroup = useCallback(() => {
     console.log(`Toggling card group - current state: ${isCardsExpanded}`);
     
@@ -65,59 +71,29 @@ export const useCardStack = (dimensions) => {
     console.log(`Expanding card at index ${index} of ${captures.length}`);
     
     // Safety check for index bounds
-    if (index < 0 || index >= captures.length) {
+    if (index < 0 || index > captures.length) {
       console.warn(`Invalid index ${index} for captures array of length ${captures.length}`);
       return;
     }
+    setExpandedCardIndex(index);
     
-    console.log(`Ensuring capture at index ${index} exists, current length: ${captures.length}`);
-    
-    // If we're not in expanded mode, expand the card group first
-    if (!isCardsExpanded) {
-      console.log('Cards not expanded yet, expanding card group first');
-      setIsCardsExpanded(true);
-      
-      // Wait for card group animation to complete before expanding card
-      setTimeout(() => {
-        console.log(`Now expanding card at index ${index}`);
-        setExpandedCardIndex(index);
-        
-        // Start expansion animation
-        Animated.timing(cardAnimation, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: false,
-        }).start();
-      }, 300);
-    } else {
-      // If already expanded, just expand the specific card
-      console.log(`Directly expanding card at index ${index}`);
-      setExpandedCardIndex(index);
-      
-      // Start expansion animation
-      Animated.timing(cardAnimation, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [captures, isCardsExpanded, cardAnimation]);
-  
-  // Collapse expanded card
-  const collapseCard = () => {
-    console.log("Collapsing card");
-    setExpandedCardIndex(null);
-  };
+    // Start expansion animation
+    Animated.timing(cardAnimation, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+  }, [captures, cardAnimation]);
   
   // Simple outside click handler
-  const handleOutsideClick = (event) => {
+  const handleOutsideClick = useCallback((event) => {
     if (expandedCardIndex !== null) {
       collapseCard();
     }
-  };
+  }, [expandedCardIndex, collapseCard]);
   
   // Scroll function
-  const scrollCards = (direction) => {
+  const scrollCards = useCallback((direction) => {
     if (scrollViewRef.current) {
       const offset = direction === 'next' ? 120 : -120;
       scrollViewRef.current.scrollTo({
@@ -125,7 +101,7 @@ export const useCardStack = (dimensions) => {
         animated: true
       });
     }
-  };
+  }, []);
   
   // Remove the PanResponder entirely - it's interfering with ScrollView touch handling
   const panResponder = null;
@@ -139,6 +115,7 @@ export const useCardStack = (dimensions) => {
   return {
     captures,
     addCapture,
+    updateCaptures, // Export the new function
     isCardsExpanded,
     expandedCardIndex,
     toggleCardGroup,
