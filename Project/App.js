@@ -61,6 +61,13 @@ export default function App() {
   // Add state for voice recognition and immediate analysis
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [isImmediateAnalysisActive, setIsImmediateAnalysisActive] = useState(false);
+  const isImmediateAnalysisActiveRef = useRef(false); // Add ref to track latest value
+  
+  // Update ref when state changes
+  useEffect(() => {
+    isImmediateAnalysisActiveRef.current = isImmediateAnalysisActive;
+  }, [isImmediateAnalysisActive]);
+  
   const [spokenPrompt, setSpokenPrompt] = useState('');
   const [isVoiceCapturing, setIsVoiceCapturing] = useState(false);
   const [speechVolume, setSpeechVolume] = useState(0); // Add speech volume state for visualizer
@@ -254,8 +261,12 @@ export default function App() {
           addCapture(capture);
           console.log(`Capture added with prompt: "${text}"`);
           
-          // Handle immediate analysis if enabled
-          if (isImmediateAnalysisActive) {
+          // Use ref value instead of closure value to get latest state
+          const currentIsImmediateAnalysisActive = isImmediateAnalysisActiveRef.current;
+          console.log(currentIsImmediateAnalysisActive ? 'Immediate analysis active' : 'Immediate analysis inactive');
+          
+          // Handle immediate analysis if enabled - use the ref value
+          if (currentIsImmediateAnalysisActive) {
             setIsAnalyzing(true);
             try {
               const analyzedResult = await analyzeImages([capture]);
@@ -285,7 +296,7 @@ export default function App() {
         }
       })();
     }
-  }, [spokenPrompt, isAnalyzing, captureDisabled, cameraRef, addCapture, isImmediateAnalysisActive, updateCaptures, analyzeImages]);
+  }, [spokenPrompt, isAnalyzing, captureDisabled, cameraRef, addCapture, updateCaptures, analyzeImages]); // Fixed dependency array order
 
   // Deep analysis states
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);

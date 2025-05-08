@@ -19,6 +19,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   const silenceTimerRef = useRef(null);
   const restartTimerRef = useRef(null);
   const speechDetectedRef = useRef(false);
+  const isProcessingRef = useRef(false); // Add missing ref for processing state tracking
   
   // Error tracking
   const [consecutiveErrors, setConsecutiveErrors] = useState(0);
