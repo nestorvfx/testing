@@ -1,11 +1,11 @@
 import { Platform, NativeEventEmitter, NativeModules, PermissionsAndroid } from 'react-native';
 
-// Create minimal logger for production
+// Create better logger for troubleshooting
 const log = {
-  info: () => {},
-  warn: () => {},
-  error: (message) => console.error(message),
-  debug: () => {}
+  info: (message) => console.log(`[VoiceService] INFO: ${message}`),
+  warn: (message) => console.warn(`[VoiceService] WARN: ${message}`),
+  error: (message) => console.error(`[VoiceService] ERROR: ${message}`),
+  debug: (message) => console.log(`[VoiceService] DEBUG: ${message}`)
 };
 
 // Import AndroidSpeech only on Android platform
@@ -45,7 +45,7 @@ class VoiceService {
     this.isInitialized = false;
     this.isListening = false;
     
-    // Cool-down tracking
+    // Adjust cooldown tracking to be more resilient
     this.lastErrorTime = 0;
     this.errorCount = 0;
     this.restartAttempts = 0;
@@ -53,6 +53,9 @@ class VoiceService {
     this.restartCooldown = 1500;
     this.errorCooldown = 5000;
     this.isInCooldown = false;
+    
+    // Add cooldown timeout to better manage states
+    this.cooldownTimer = null;
     
     // Event handler callbacks
     this.onSpeechStart = null;
@@ -205,52 +208,88 @@ class VoiceService {
     }
     
     if (shouldRestart && !this.isInCooldown) {
+      log.info(`Entering cooldown for ${cooldownTime}ms`);
       this.isInCooldown = true;
       this.isListening = false;
       
-      setTimeout(() => {
+      // Clear any existing cooldown timer
+      if (this.cooldownTimer) {
+        clearTimeout(this.cooldownTimer);
+      }
+      
+      // Set the cooldown timer
+      this.cooldownTimer = setTimeout(() => {
+        log.info('Exiting cooldown period');
         this.isInCooldown = false;
         this.restartAttempts++;
+        
+        // Don't auto-restart here, let the button component handle it
       }, cooldownTime);
     }
   }
   
-  async start(language = 'en_US') {
+  async start(language = 'en_US', options = {}) {
     if (Platform.OS !== 'android') {
+      log.error('Speech recognition is only available on Android');
       return Promise.reject(new Error('Speech recognition is only available on Android'));
     }
     
     if (!AndroidSpeech) {
+      log.error('Speech recognition module not loaded');
       return Promise.reject(new Error('Speech recognition module not loaded'));
     }
     
     if (this.isInCooldown) {
+      log.warn('In cooldown period, ignoring start request');
       return Promise.reject(new Error('In cooldown period'));
     }
     
     if (this.isListening) {
+      log.info('Already listening, ignoring start request');
       return Promise.resolve();
     }
     
     try {
+      // Stop any existing recognition first
+      try {
+        if (typeof AndroidSpeech.isRecognizing === 'function') {
+          const recognizing = await AndroidSpeech.isRecognizing();
+          if (recognizing) {
+            log.warn('Recognition already in progress, stopping first');
+            await AndroidSpeech.stop();
+            
+            // Add a delay to ensure recognition engine resets
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+      } catch (stopError) {
+        log.warn(`Error checking/stopping existing recognition: ${stopError.message}`);
+      }
+      
       const hasPermission = await this.requestMicrophonePermission();
       if (!hasPermission) {
+        log.warn('Microphone permission denied');
         return Promise.reject(new Error('Microphone permission denied'));
       }
       
-      if (typeof AndroidSpeech.isRecognizing === 'function') {
-        const recognizing = await AndroidSpeech.isRecognizing();
-        if (recognizing) {
-          await AndroidSpeech.stop();
-        }
-      }
+      // Enhance recognition options to improve accuracy
+      const recognitionOptions = {
+        language,
+        maxResults: options.maxResults || 3,
+        partialResults: options.partialResults !== false,
+        ...options.extraOptions
+      };
       
-      await AndroidSpeech.start({ language });
+      log.info('Starting voice recognition with options: ' + JSON.stringify(recognitionOptions));
+      await AndroidSpeech.start(recognitionOptions);
+      
+      log.info('Voice recognition started successfully');
       this.isListening = true;
       this.restartAttempts = 0;
       return Promise.resolve();
     } catch (e) {
       this.isListening = false;
+      log.error(`Error starting voice recognition: ${e.message}`);
       
       const isCommonError = e && e.message && (
         e.message.includes('already started') || 
@@ -258,6 +297,8 @@ class VoiceService {
       );
       
       if (isCommonError) {
+        log.info('Common error detected, treating as success');
+        this.isListening = true; // Still mark as listening since engine might be active
         return Promise.resolve();
       }
       
@@ -270,20 +311,28 @@ class VoiceService {
       return Promise.resolve();
     }
     
+    log.info('Stopping voice recognition');
+    
     try {
       if (typeof AndroidSpeech.isRecognizing === 'function') {
         const recognizing = await AndroidSpeech.isRecognizing();
         
         if (recognizing) {
+          log.info('Recognition in progress, stopping');
           await AndroidSpeech.stop();
+        } else {
+          log.info('No recognition in progress, nothing to stop');
         }
       } else {
+        log.info('Calling stop without checking recognition status');
         await AndroidSpeech.stop();
       }
       
       this.isListening = false;
+      log.info('Voice recognition stopped successfully');
       return Promise.resolve();
     } catch (e) {
+      log.error(`Error stopping voice recognition: ${e.message}`);
       return Promise.reject(e);
     }
   }
@@ -311,6 +360,12 @@ class VoiceService {
     }
     
     try {
+      // Clear cooldown timer if active
+      if (this.cooldownTimer) {
+        clearTimeout(this.cooldownTimer);
+        this.cooldownTimer = null;
+      }
+      
       this.listeners.forEach(listener => {
         if (listener && typeof listener.remove === 'function') {
           listener.remove();
@@ -319,8 +374,10 @@ class VoiceService {
       
       this.listeners = [];
       this.isInitialized = false;
+      this.isInCooldown = false;
     } catch (e) {
       // Cleanup failed
+      log.error(`Error during destroy: ${e.message}`);
     }
   }
 }

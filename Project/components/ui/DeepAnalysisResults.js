@@ -10,11 +10,13 @@ import {
   Platform,
   LayoutAnimation,
   UIManager,
-  ActivityIndicator
+  ActivityIndicator,
+  useWindowDimensions  // Add this import
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const { width, height } = Dimensions.get('window');
+// Remove the static dimensions - these won't update on rotation
+// const { width, height } = Dimensions.get('window');
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -133,6 +135,24 @@ const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {
 
 const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis }) => {
   const [expandedIndex, setExpandedIndex] = useState(analyses.length > 0 ? analyses.length - 1 : null);
+  
+  // Use the useWindowDimensions hook instead of static Dimensions
+  // This will update automatically when screen size changes
+  const { width, height } = useWindowDimensions();
+
+  // Calculate dimensions based on current screen size and platform
+  // Make it narrower on mobile platforms (Android/iOS) but keep it the same on web
+  const widthMultiplier = Platform.OS === 'web' ? 0.92 : 0.85; // Reduced to 85% for mobile
+  
+  const cardWidth = Math.max(
+    300, // Minimum width in pixels
+    Math.min(width * widthMultiplier, Platform.OS === 'web' ? 600 : 500) // Narrower max-width for mobile
+  );
+  
+  // Adjust max height based on orientation
+  const isLandscape = width > height;
+  const cardMaxHeight = isLandscape ? height * 0.85 : height * 0.8;
+  const cardMinHeight = Math.min(height * 0.6, 400); // Add minimum height
 
   // When new analysis is added, expand it
   useEffect(() => {
@@ -145,24 +165,26 @@ const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis 
     setExpandedIndex(expandedIndex === index ? null : index);
   };
 
-  // Calculate dimensions similar to ExpandedCard
-  const cardWidth = Math.min(width * 0.9, 500);
-  const cardMaxHeight = height * 0.8;
-
   return (
-    <View style={styles.modalOverlay}>
+    <View style={[styles.modalOverlay, { zIndex: 9000 }]}>
       {/* Backdrop for dismissal */}
       <TouchableOpacity 
-        style={styles.backdrop}
+        style={[styles.backdrop, { zIndex: 9001 }]}
         activeOpacity={1}
         onPress={onClose}
       />
       
-      {/* Results container */}
+      {/* Results container with dynamic size */}
       <View style={[
-
         styles.container, 
-        { width: cardWidth, maxHeight: cardMaxHeight },
+        { 
+          width: cardWidth, 
+          maxHeight: cardMaxHeight,
+          minHeight: cardMinHeight, // Add minimum height
+          // Add minimum width constraint
+          minWidth: Math.min(width * 0.85, 300),
+          zIndex: 9002 // Much higher z-index to ensure it's above all other components
+        },
         Platform.OS === 'web' && styles.containerWeb
       ]}>
         {/* Header */}
@@ -186,7 +208,7 @@ const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis 
           </View>
         ) : (
           <ScrollView 
-            style={styles.scrollView}
+            style={[styles.scrollView, { flex: 1, minHeight: 200 }]} // Ensure ScrollView has height
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={true}
           >
@@ -234,12 +256,20 @@ const styles = StyleSheet.create({
     top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1000,
+    zIndex: 9999, // Extremely high z-index
+    elevation: 9999, // Match with extreme elevation for Android
+    // Force it to be the top layer
+    ...(Platform.OS === 'android' ? {
+      backgroundColor: 'transparent',
+      pointerEvents: 'box-none'
+    } : {})
   },
   backdrop: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.6)',
+    zIndex: 9998, // One less than overlay
+    elevation: 9998,
   },
   container: {
     backgroundColor: '#f0f0f0',
@@ -249,8 +279,20 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 10,
-    zIndex: 1001,
+    elevation: 9999, // Extreme elevation for Android
+    zIndex: 9999,
+    // Force hardware acceleration on Android
+    ...(Platform.OS === 'android' ? {
+      backfaceVisibility: 'hidden',
+      transform: [{ perspective: 1000 }]
+    } : {}),
+    // Add more flexible sizing that will work well on all devices
+    width: '92%',
+    maxWidth: 600,
+    // Add explicit flex properties to ensure proper sizing
+    minHeight: 400, // Minimum height in pixels
+    display: 'flex',
+    flexDirection: 'column',
   },
   containerWeb: {
     boxShadow: '0px 4px 12px rgba(0,0,0,0.3)',
@@ -272,7 +314,8 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   scrollView: {
-    flex: 1,
+    flex: 1, // Ensure ScrollView takes available space
+    minHeight: 200, // Minimum height for content
   },
   scrollContent: {
     padding: 12,
@@ -434,8 +477,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6F00',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 6,
-    zIndex: 1002,
+    elevation: 1000000, // Even higher
+    zIndex: 1000000,
   },
   fabWeb: {
     boxShadow: '0px 2px 6px rgba(0,0,0,0.3)',
@@ -446,7 +489,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1003,
+    zIndex: 1000001,
+    elevation: 1000001,
   },
   loadingContainer: {
     backgroundColor: 'white',

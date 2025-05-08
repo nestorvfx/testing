@@ -14,73 +14,33 @@ export const useCamera = () => {
   
   // Handle photo capture
   const capturePhoto = async () => {
-    if (!cameraReady || isCapturing || !cameraRef.current) return null;
-    
-    // Don't set capturing state for Android to avoid flash
-    if (Platform.OS !== 'android') {
-      setIsCapturing(true);
-    }
-    
-    // Subtle button animation
-    captureButtonScale.setValue(0.95);
-    setTimeout(() => captureButtonScale.setValue(1), 100);
-    
     try {
-      let photo;
-      
-      if (isWeb) {
-        if (!cameraRef.current?.takePictureAsync) {
-          throw new Error('Web camera not ready');
-        }
-        photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
-      } else if (cameraRef.current) {
-        // For Android, use options that prevent flash
-        if (Platform.OS === 'android') {
-          photo = await cameraRef.current.takePictureAsync({
-            // Ensure flash is off
-            flash: 'off',
-            // Disable any processing that might cause screen flashes
-            skipProcessing: true
-          });
-        } else {
-          // For iOS, use the regular options
-          photo = await cameraRef.current.takePictureAsync({
-            quality: 0.8,
-            exif: false,
-          });
-        }
-        
-        // Save to media library on mobile
-        try {
-          await MediaLibrary.saveToLibraryAsync(photo.uri);
-        } catch (error) {
-          console.warn('Could not save to library:', error);
-        }
-      } else {
-        throw new Error('Camera not available');
+      if (!cameraRef.current) {
+        console.log('Camera reference is null, cannot capture photo');
+        return null;
       }
       
-      // Add metadata
-      const photoWithMetadata = {
+      console.log('Taking picture with camera...');
+      
+      // Use a simpler approach to capture - reduce options to improve reliability
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+        skipProcessing: Platform.OS === 'android',
+        fixOrientation: true
+      });
+      
+      if (!photo) {
+        console.log('takePictureAsync returned null or undefined');
+        return null;
+      }
+      
+      console.log(`Photo captured successfully: ${photo.uri}`);
+      return {
         ...photo,
-        timestamp: Date.now(),
-        description: "Captured scene at " + new Date().toLocaleTimeString(),
-        isFlipped: true,
+        timestamp: Date.now()
       };
-      
-      // For Android, don't change capturing state to avoid UI updates
-      if (Platform.OS !== 'android') {
-        setIsCapturing(false);
-      }
-      
-      return photoWithMetadata;
-      
     } catch (error) {
-      console.error('Error capturing photo:', error);
-      setCameraError(error);
-      if (Platform.OS !== 'android') {
-        setIsCapturing(false);
-      }
+      console.error('Error in capturePhoto:', error);
       return null;
     }
   };

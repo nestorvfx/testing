@@ -19,6 +19,7 @@ import NewAnalysisPromptModal from './components/ui/NewAnalysisPromptModal';
 import VoiceButton from './components/ui/VoiceButton';
 import ImmediateAnalysisButton from './components/ui/ImmediateAnalysisButton';
 import SpeechWaveVisualizer from './components/ui/SpeechWaveVisualizer';
+import VoiceDebugOverlay from './components/ui/VoiceDebugOverlay';
 
 // Hooks
 import { useCamera } from './hooks/useCamera';
@@ -95,72 +96,81 @@ export default function App() {
     console.log(`[DEBUG ${timestamp}] ${message}`, data || '');
     
     setDebugInfo(prev => {
-      // Keep only the last 20 messages
+      // Keep only the last  messages
       const newLogs = [...prev, { timestamp, message, data }];
       if (newLogs.length > 20) return newLogs.slice(-20);
       return newLogs;
     });
   }, []);
   
-  // Handle photo capture and add to stack
-  const handleCapturePhoto = async (customPrompt = '') => {
-    // Prevent capture if analysis is in progress or capture disabled
-    if (isAnalyzing || captureDisabled) {
-      console.log('Analysis in progress or capture prevented');
+  // Ensure camera is ready before capturing
+  const handleCapturePhoto = useCallback(async (customPrompt = '') => {
+    console.log(`handleCapturePhoto called with prompt: "${customPrompt}"`);
+    
+    if (!cameraReady) {
+      console.log('Camera not ready, cannot capture');
       return;
     }
-
-    // Set a disable state to prevent multiple captures
-    setCaptureDisabled(true);
     
+    if (customPrompt) {
+      console.log(`Capturing photo with prompt: "${customPrompt}"`);
+    }
+
     try {
+      // Try to capture photo
+      console.log('Attempting to capture photo...');
       const photo = await capturePhoto();
-      if (photo) {
-        // Add custom prompt to photo if provided
-        const photoWithPrompt = customPrompt ? { ...photo, customPrompt } : photo;
-        const photoUri = photoWithPrompt.uri;
+      
+      if (!photo) {
+        console.log('Photo capture returned null');
+        return;
+      }
+      
+      // Attach the voice prompt to the photo
+      const photoWithPrompt = customPrompt ? { 
+        ...photo, 
+        customPrompt,
+        timestamp: Date.now() 
+      } : photo;
+      
+      console.log(`Photo captured successfully ${customPrompt ? 'with prompt' : ''}`);
+      
+      // Add the capture to the list
+      addCapture(photoWithPrompt);
+      
+      // Handle immediate analysis
+      if (isImmediateAnalysisActive) {
+        console.log('Starting immediate analysis...');
+        setIsAnalyzing(true);
         
-        console.log('Captured photo with URI:', photoUri);
-                
-        // Add the photo to captures - UPDATED to use new API
-        addCapture(photoWithPrompt);
-        
-        // If immediate analysis is active, analyze this photo right away
-        if (isImmediateAnalysisActive) {
-          // Wait a moment for state to update
-          await new Promise(resolve => setTimeout(resolve, 100));
+        try {            
+          const analyzedResult = await analyzeImages([photoWithPrompt]);
           
-          setIsAnalyzing(true);
-          
-          try {            
-            // Analyze just the new photo
-            const analyzedResult = await analyzeImages([photoWithPrompt]);
-            
+          if (analyzedResult && analyzedResult.length > 0) {
             const analyzedPhoto = analyzedResult[0];
-            console.log('Analysis complete, analyzed photo:', analyzedPhoto.uri);
             
-            updateCaptures([...captures, analyzedPhoto]);
-                
-            expandCard(captures.length);
-          } catch (error) {
-            console.error('Error analyzing image:', error);
-            Alert.alert(
-              'Analysis Error',
-              'Failed to analyze the captured image. You can try again or analyze it manually.'
+            updateCaptures(prevCaptures => 
+              prevCaptures.map(c => 
+                c.uri === photoWithPrompt.uri ? { ...c, ...analyzedPhoto, analyzed: true } : c
+              )
             );
-          } finally {
-            setIsAnalyzing(false);
+            
+            console.log('Photo analyzed successfully');
           }
+        } catch (error) {
+          console.error('Error analyzing photo:', error);
+        } finally {
+          setIsAnalyzing(false);
         }
       }
-    } finally {
-      // Re-enable capture after a delay
-      setTimeout(() => {
-        setCaptureDisabled(false);
-      }, 1000);
-    }
-  };
-  
+      
+      return photoWithPrompt;
+    } catch (error) {
+      console.error('Error capturing photo:', error);
+      throw error;
+    } 
+  }, [cameraReady, capturePhoto, addCapture, isImmediateAnalysisActive, updateCaptures, analyzeImages]);
+
   // Debug-enhanced regular analyze
   const handleAnalyzeImages = async () => {
     if (isAnalyzing || unanalyzedCount === 0) return;
@@ -185,52 +195,97 @@ export default function App() {
     }
   };
 
-  // Handle speech recognition result with better error handling
-  const handleSpeechResult = async (text, isFinalized = true, volume = 0) => {
-    console.log('Speech recognized:', text);
+  // Handle speech recognition result
+  const handleSpeechResult = useCallback((text, isFinalized, volume = 0) => {
+    // Log the full text that we received
+    console.log(`handleSpeechResult received text: "${text}", finalized: ${isFinalized}`);
     
-    if (!text || text.trim().length === 0) {
-      console.log('Empty speech result, ignoring');
-      return;
+    if (isFinalized || text.length > 5 || text !== spokenPrompt) {
+      console.log(`Speech recognized: ${text}`);
     }
     
+    // Make sure we're keeping the full text
     setSpokenPrompt(text);
-    setSpeechVolume(volume); // Update volume for visualizer
+    setSpeechVolume(volume);
     
-    // Only take photo and set capturing state if this is the finalized result
-    // and we're not already analyzing or button is disabled
     if (isFinalized && !isAnalyzing && !captureDisabled) {
+      console.log(`Processing finalized speech: "${text}" for photo capture`);
       setIsVoiceCapturing(true);
       
-      try {
-        // Also disable capture button to prevent manual capture during voice capture
-        setCaptureDisabled(true);
+      // Disable capture to prevent multiple triggers
+      setCaptureDisabled(true);
+      
+      // DIRECT CAMERA CAPTURE - bypass handleCapturePhoto for testing
+      (async () => {
+        console.log(`Taking photo directly with prompt: "${text}"`);
         
-        // Short delay to allow UI to update
-        setTimeout(async () => {
-          try {
-            // Capture photo with the spoken text as custom prompt
-            await handleCapturePhoto(text);
-          } catch (error) {
-            console.error('Error capturing photo with speech prompt:', error);
-            Alert.alert(
-              'Voice Capture Error',
-              'There was a problem capturing with your voice prompt. Please try again.'
-            );
-          } finally {
+        try {
+          // Check if camera is available
+          if (!cameraRef.current) {
+            console.log('No camera reference available');
+            setCaptureDisabled(false);
+            setIsVoiceCapturing(false);
+            return;
+          }
+          
+          // Take the photo directly
+          const photo = await cameraRef.current.takePictureAsync({
+            quality: 0.85,
+            skipProcessing: Platform.OS === 'android'
+          });
+          
+          console.log(`Photo captured: ${photo ? photo.uri : 'null'}`);
+          
+          if (!photo) {
+            console.log('Photo capture failed - returned null');
+            setCaptureDisabled(false);
+            setIsVoiceCapturing(false);
+            return;
+          }
+          
+          // Create capture with prompt
+          const capture = {
+            ...photo,
+            customPrompt: text,
+            timestamp: Date.now()
+          };
+          
+          // Add to captures
+          addCapture(capture);
+          console.log(`Capture added with prompt: "${text}"`);
+          
+          // Handle immediate analysis if enabled
+          if (isImmediateAnalysisActive) {
+            setIsAnalyzing(true);
+            try {
+              const analyzedResult = await analyzeImages([capture]);
+              if (analyzedResult && analyzedResult.length > 0) {
+                updateCaptures(prevCaptures => 
+                  prevCaptures.map(c => 
+                    c.uri === capture.uri ? { ...c, ...analyzedResult[0], analyzed: true } : c
+                  )
+                );
+              }
+            } catch (err) {
+              console.error('Analysis error:', err);
+            } finally {
+              setIsAnalyzing(false);
+            }
+          }
+        } catch (err) {
+          console.error('Error during direct camera capture:', err);
+        } finally {
+          // Reset state
+          setTimeout(() => {
             setIsVoiceCapturing(false);
             setSpokenPrompt('');
-            setSpeechVolume(0); // Reset volume when done
-          }
-        }, 500);
-      } catch (error) {
-        console.error('Error in speech result handling:', error);
-        setIsVoiceCapturing(false);
-        setSpokenPrompt('');
-        setSpeechVolume(0);
-      }
+            setSpeechVolume(0);
+            setCaptureDisabled(false);
+          }, 1000);
+        }
+      })();
     }
-  };
+  }, [spokenPrompt, isAnalyzing, captureDisabled, cameraRef, addCapture, isImmediateAnalysisActive, updateCaptures, analyzeImages]);
 
   // Deep analysis states
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
@@ -280,6 +335,19 @@ export default function App() {
     handleDeepAnalysis(prompt);
   }, [handleDeepAnalysis]);
   
+  // Add debug state for voice
+  const [voiceDebugInfo, setVoiceDebugInfo] = useState({
+    isListening: false,
+    speechText: '',
+    volume: 0,
+    errorMessage: '',
+    state: {},
+    isActive: false,
+    inCooldown: false,
+    isAnalyzing: false
+  });
+  const [showVoiceDebug, setShowVoiceDebug] = useState(__DEV__); // Show in dev mode by default
+  
   // Main app UI
   return (
     <View style={styles.container}>
@@ -315,6 +383,7 @@ export default function App() {
             onToggleActive={() => setIsVoiceActive(!isVoiceActive)}
             onSpeechResult={(text, isFinalized, volume) => handleSpeechResult(text, isFinalized, volume)}
             isAnalyzing={isAnalyzing || isVoiceCapturing} // Pass analyzing state to control when listening should pause
+            onDebugInfo={setVoiceDebugInfo}
           />
           <ImmediateAnalysisButton 
             isActive={isImmediateAnalysisActive} 
@@ -404,16 +473,6 @@ export default function App() {
         />
       )}
       
-      {/* Deep Analysis Results */}
-      {isDeepAnalysisResultsVisible && (
-        <DeepAnalysisResults 
-          analyses={deepAnalyses}
-          isAnalyzing={isDeepAnalyzing}
-          onClose={() => setIsDeepAnalysisResultsVisible(false)}
-          onAddNewAnalysis={handleAddNewAnalysis}
-        />
-      )}
-      
       {/* New Analysis Prompt Modal */}
       <NewAnalysisPromptModal
         visible={isPromptModalVisible}
@@ -441,6 +500,39 @@ export default function App() {
           <Text style={styles.debugButtonText}>?</Text>
         </TouchableOpacity>
       )}
+      
+      {/* Render DeepAnalysisResults absolutely last to ensure it's on top */}
+      {isDeepAnalysisResultsVisible && (
+        <DeepAnalysisResults 
+          analyses={deepAnalyses}
+          isAnalyzing={isDeepAnalyzing}
+          onClose={() => setIsDeepAnalysisResultsVisible(false)}
+          onAddNewAnalysis={handleAddNewAnalysis}
+        />
+      )}
+      
+      {/* Voice Debug Overlay */}
+      <VoiceDebugOverlay 
+        isVisible={showVoiceDebug}
+        isListening={voiceDebugInfo.isListening}
+        speechText={voiceDebugInfo.speechText}
+        volume={voiceDebugInfo.volume}
+        errorMessage={voiceDebugInfo.errorMessage}
+        state={voiceDebugInfo.state}
+        isActive={voiceDebugInfo.isActive}
+        inCooldown={voiceDebugInfo.inCooldown}
+        isAnalyzing={voiceDebugInfo.isAnalyzing}
+      />
+      
+      {/* Debug Toggle Button */}
+      {__DEV__ && (
+        <TouchableOpacity 
+          style={customDebugStyles.debugToggleButton}
+          onPress={() => setShowVoiceDebug(!showVoiceDebug)}
+        >
+          <Text style={customDebugStyles.debugToggleText}>🎤</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -460,5 +552,25 @@ const customStyles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.2)',
     borderRadius: 25,
     padding: 5,
+  },
+});
+
+// Create a separate styles object for debug elements
+const customDebugStyles = StyleSheet.create({
+  debugToggleButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  debugToggleText: {
+    color: 'white',
+    fontSize: 18,
   },
 });
