@@ -37,7 +37,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
 
   // Prepare debug info
   useEffect(() => {
-    onDebugInfo({
+    const debugInfo = {
       isListening,
       speechText,
       volume,
@@ -50,15 +50,21 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         lastSpeechTimestamp: lastSpeechTimestampRef.current ? 
           new Date(lastSpeechTimestampRef.current).toLocaleTimeString() : null,
         silenceTimer: silenceTimerRef.current !== null,
+        restartTimer: restartTimerRef.current !== null,
+        isProcessing: isProcessingRef.current,
         consecutiveErrors,
         isAvailable,
       }
-    });
+    };
+    
+    console.log('[VoiceButton] Debug state updated', debugInfo);
+    onDebugInfo(debugInfo);
   }, [isListening, speechText, volume, isActive, inCooldown, isAnalyzing, errorMessage, consecutiveErrors, isAvailable, onDebugInfo]);
 
   // Report speech text to parent
   useEffect(() => {
     if (isListening && speechText && onSpeechResult) {
+      console.log(`[VoiceButton] Reporting speech text to parent: "${speechText}", volume: ${volume}`);
       onSpeechResult(speechText, false, volume);
     }
   }, [isListening, speechText, volume, onSpeechResult]);
@@ -67,9 +73,12 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   useEffect(() => {
     const checkVoiceAvailability = async () => {
       try {
+        console.log('[VoiceButton] Checking voice recognition availability');
         const available = await VoiceService.isAvailable();
-        setIsAvailable(available);
+        console.log(`[VoiceButton] Voice recognition availability:`, available);
+        setIsAvailable(!!available); // Ensure we have a boolean value
       } catch (e) {
+        console.error('[VoiceButton] Error checking voice availability:', e);
         setIsAvailable(false);
       }
     };
@@ -105,7 +114,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   // Handle active state changes
   useEffect(() => {
     let activationTimer;
-    if (isActive && isAvailable && Platform.OS === 'android' && !isListening && !inCooldown && !isAnalyzing) {
+    if (isActive && isAvailable && !isListening && !inCooldown && !isAnalyzing) {
       activationTimer = setTimeout(() => {
         startListening().catch((err) => {
           if (err?.message?.includes('cooldown')) {
@@ -246,24 +255,33 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
 
   // Speech event handlers
   const onSpeechStart = (e) => {
+    console.log('[VoiceButton] Speech recognition started', e);
     lastSpeechTimestampRef.current = Date.now();
     setConsecutiveErrors(0);
     cleanupTimers();
   };
 
   const onSpeechEnd = (e) => {
-    if (isAnalyzing) return;
+    console.log('[VoiceButton] Speech recognition ended', e);
+    if (isAnalyzing) {
+      console.log('[VoiceButton] Ignoring speech end during analysis');
+      return;
+    }
     
     lastSpeechTimestampRef.current = Date.now();
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
     }
+    console.log('[VoiceButton] Setting silence timer after speech end');
     silenceTimerRef.current = setTimeout(checkSilenceDuration, 500);
   };
 
   // Improved speech results handling for final results
   const onSpeechResults = (e) => {
-    if (!e || !e.value || e.value.length === 0) return;
+    if (!e || !e.value || e.value.length === 0) {
+      console.log('[VoiceButton] Received empty speech results');
+      return;
+    }
     
     lastSpeechTimestampRef.current = Date.now();
     
@@ -287,13 +305,17 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       speechDetectedRef.current = true;
       
       // Process the result immediately
+      console.log('[VoiceButton] Processing final speech result');
       processSpeechResult();
     }
   };
   
   // Modified to properly extract the full text
   const onSpeechPartialResults = (e) => {
-    if (!e || !e.value || e.value.length === 0) return;
+    if (!e || !e.value || e.value.length === 0) {
+      console.log('[VoiceButton] Received empty partial results');
+      return;
+    }
     
     lastSpeechTimestampRef.current = Date.now();
     
@@ -303,11 +325,11 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     // Extract the text properly - e.value is an array of strings
     const partialText = Array.isArray(e.value) ? e.value[0] : e.value;
     
-    console.log(`[VoiceButton] All partial results: "${partialText}"`);
+    console.log(`[VoiceButton] Partial result: "${partialText}"`);
     
     if (partialText && partialText.trim().length > 0) {
       // Make sure we're using the full string, not just the first character
-      console.log(`[VoiceButton] Partial result: "${partialText}"`);
+      console.log(`[VoiceButton] Updating with partial result: "${partialText}"`);
       
       // Update both state and ref with the FULL text
       setSpeechText(partialText);
@@ -318,6 +340,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
       }
+      console.log('[VoiceButton] Setting silence timer after partial result');
       silenceTimerRef.current = setTimeout(checkSilenceDuration, 500);
     }
   };
@@ -334,6 +357,14 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       if (speechText && onSpeechResult) {
         onSpeechResult(speechText, false, normalizedVolume);
       }
+    } else if (e && e.value !== undefined) {
+      // Handle web volume
+      const normalizedVolume = Math.min(e.value * 100, 100);
+      setVolume(normalizedVolume);
+      
+      if (Math.random() < 0.05) {
+        console.log(`[VoiceButton] Volume (web): ${normalizedVolume.toFixed(0)}%`);
+      }
     }
   };
 
@@ -344,7 +375,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       `Error ${e.error.code}: ${e.error.message || 'Unknown error'}` : 
       'Unknown error';
     
-    console.log(`[VoiceButton] Speech error: ${errorMessage}`);
+    console.log(`[VoiceButton] Speech error: ${errorMessage}`, e);
     setErrorMessage(errorMessage);
     
     // Handle any error - all errors should go through cooldown recovery
@@ -435,14 +466,6 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
 
   const toggleActive = () => {
     console.log(`[VoiceButton] Toggle active: current=${isActive}`);
-    if (Platform.OS !== 'android') {
-      Alert.alert(
-        'Not Available',
-        'Voice recognition is currently only supported on Android devices.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
     
     if (!isAvailable) {
       Alert.alert(
@@ -458,7 +481,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   };
 
   const getButtonIcon = () => {
-    if (!isAvailable || Platform.OS !== 'android') return "mic-off";
+    if (!isAvailable) return "mic-off";
     if (!isActive) return "mic-off";
     if (inCooldown) return "mic-outline";
     if (isListening) return "mic";
@@ -466,7 +489,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   };
 
   const getButtonStyle = () => {
-    if (!isAvailable || Platform.OS !== 'android') return styles.unavailable;
+    if (!isAvailable) return styles.unavailable;
     if (!isActive) return styles.inactive;
     if (isAnalyzing) return styles.analyzing;
     if (inCooldown) return styles.cooldown;
@@ -482,7 +505,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       ]}
       onPress={toggleActive}
       activeOpacity={0.7}
-      disabled={!isAvailable && Platform.OS !== 'android'} 
+      disabled={!isAvailable} 
     >
       {isListening ? (
         <View style={styles.listeningContainer}>
@@ -497,7 +520,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         <Ionicons 
           name={getButtonIcon()} 
           size={22} 
-          color={(isActive && isAvailable && Platform.OS === 'android') ? "#fff" : "#999"} 
+          color={(isActive && isAvailable) ? "#fff" : "#999"} 
         />
       )}
     </TouchableOpacity>

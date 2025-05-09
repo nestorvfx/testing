@@ -1,3 +1,6 @@
+// Import the polyfill at the very top of your app entry point
+import './src/utils/crypto-polyfill';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

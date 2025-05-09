@@ -1,3 +1,5 @@
+import './src/utils/crypto-polyfill';
+import './polyfills';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Camera } from 'expo-camera';
