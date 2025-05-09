@@ -191,23 +191,6 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 20,
     fontStyle: 'italic',
   },
-  debugButton: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999,
-  },
-  debugButtonText: {
-    color: '#000',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
   compactStackContainer: {
     width: COMPACT_MAX_WIDTH,
     height: CARD_HEIGHT + 10,
@@ -303,4 +286,18 @@ export const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
   },
+  platformSpecific: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+    },
+    android: {
+      elevation: 5,
+    },
+    web: {
+      boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.25)',
+    },
+  }),
 });

@@ -6,7 +6,12 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:android": "expo build:android --no-publish",
+    "build:ios": "expo build:ios --no-publish",
+    "build:web": "expo build:web",
+    "prod:android": "NODE_ENV=production expo run:android --release",
+    "prod:ios": "NODE_ENV=production expo run:ios --release"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.4",
@@ -38,7 +43,8 @@
     "websocket": "^1.0.35"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "babel-plugin-transform-remove-console": "^6.9.4"
   },
   "private": true
 }

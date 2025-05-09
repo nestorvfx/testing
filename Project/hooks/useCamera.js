@@ -16,11 +16,8 @@ export const useCamera = () => {
   const capturePhoto = async () => {
     try {
       if (!cameraRef.current) {
-        console.log('Camera reference is null, cannot capture photo');
         return null;
       }
-      
-      console.log('Taking picture with camera...');
       
       // Use a simpler approach to capture - reduce options to improve reliability
       const photo = await cameraRef.current.takePictureAsync({
@@ -30,21 +27,17 @@ export const useCamera = () => {
       });
       
       if (!photo) {
-        console.log('takePictureAsync returned null or undefined');
         return null;
       }
       
-      console.log(`Photo captured successfully: ${photo.uri}`);
       return {
         ...photo,
         timestamp: Date.now()
       };
     } catch (error) {
-      console.error('Error in capturePhoto:', error);
       return null;
     }
-  };
-  
+  };  
   return {
     cameraReady,
     setCameraReady,

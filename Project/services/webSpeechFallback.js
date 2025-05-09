@@ -3,30 +3,51 @@
  * This provides a fallback when Azure Speech services aren't available
  */
 
+import { Platform } from 'react-native';
+
+// Add minimal logging for critical errors only
+const log = {
+  error: (message) => console.error(`[WebSpeech] ERROR: ${message}`)
+};
+
 // Check if Web Speech API is available
 export const isWebSpeechSupported = () => {
-  return typeof window !== 'undefined' && (
+  // Only check for Web Speech API on web platform
+  if (Platform.OS !== 'web') {
+    return false;
+  }
+  
+  const supported = typeof window !== 'undefined' && (
     window.SpeechRecognition ||
     window.webkitSpeechRecognition ||
     window.mozSpeechRecognition ||
     window.msSpeechRecognition
   );
+  
+  return supported;
 };
 
 // Get the appropriate SpeechRecognition constructor for the current browser
 export const getSpeechRecognition = () => {
   if (!isWebSpeechSupported()) return null;
   
-  return window.SpeechRecognition ||
+  const api = window.SpeechRecognition ||
          window.webkitSpeechRecognition ||
          window.mozSpeechRecognition ||
          window.msSpeechRecognition;
+  
+  return api;
 };
 
 // Request microphone permission in the browser
 export const requestMicrophonePermission = async () => {
-  if (!navigator || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    console.error('Media devices API not supported in this browser');
+  // Make sure we're on web platform before attempting to use web APIs
+  if (Platform.OS !== 'web') {
+    log.error('requestMicrophonePermission called on non-web platform');
+    return false;
+  }
+    if (!navigator || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    log.error('Media devices API not supported in this browser');
     return false;
   }
   
@@ -34,10 +55,12 @@ export const requestMicrophonePermission = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     
     // Success! Close the stream since we only needed to request permission
-    stream.getTracks().forEach(track => track.stop());
+    stream.getTracks().forEach(track => {
+      track.stop();
+    });
     return true;
   } catch (err) {
-    console.error('Microphone permission denied:', err);
+    log.error(`Microphone permission denied: ${err.message || err}`);
     return false;
   }
 };
@@ -58,7 +81,7 @@ export const createSpeechRecognition = (options = {}) => {
     
     return recognition;
   } catch (error) {
-    console.error('Error creating SpeechRecognition:', error);
+    log.error('Error creating SpeechRecognition: ' + error.message);
     return null;
   }
 };
