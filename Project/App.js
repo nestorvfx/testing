@@ -253,6 +253,9 @@ export default function App() {
   const [isDeepAnalysisResultsVisible, setIsDeepAnalysisResultsVisible] = useState(false);
   const [isPromptModalVisible, setIsPromptModalVisible] = useState(false);
   
+  // Audio testing state
+  const [showAudioTest, setShowAudioTest] = useState(false);
+  
   // Function to handle deep analysis
   const handleDeepAnalysis = useCallback(async (userPrompt = "") => {
     if (captures.length === 0) {
@@ -443,5 +446,5 @@ const customStyles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.2)',
     borderRadius: 25,
     padding: 5,
-  },
+  }
 });

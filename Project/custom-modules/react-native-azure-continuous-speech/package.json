@@ -1,0 +1,24 @@
+{
+  "name": "react-native-azure-continuous-speech",
+  "version": "0.1.0",
+  "description": "Native module for Azure Speech SDK continuous recognition on Android",
+  "main": "js/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "react-native",
+    "android",
+    "azure",
+    "speech",
+    "recognition",
+    "continuous"
+  ],
+  "author": "PerplexitySceneCapture",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "microsoft-cognitiveservices-speech-sdk": "~1.43.1"
+  }
+}
