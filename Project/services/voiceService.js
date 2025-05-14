@@ -61,19 +61,16 @@ class VoiceService {
       return false;
     }
   }
-
   /**
    * Initialize Android custom module
    * @private
    */
   async _initializeAndroidModule() {
     try {
-      console.log('Trying to set up Android continuous speech module');
+      // Reduced logging
       this.androidModule = await setupAndroidContinuousFallback(AZURE_CONFIG);
       
       if (this.androidModule) {
-        console.log('Successfully initialized Android continuous speech module');
-        
         // Configure event handlers
         await this.androidModule.configureListeners({
           onSpeechStart: (event) => {
@@ -97,7 +94,6 @@ class VoiceService {
 
         return true;
       } else {
-        console.warn('Android custom speech module not available, using fallback');
         return false;
       }
     } catch (error) {

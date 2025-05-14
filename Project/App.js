@@ -6,7 +6,7 @@ import { Camera } from 'expo-camera';
 
 // Helper functions for logging
 const logInfo = (message) => {
-  if (__DEV__) console.info(`[App] ${message}`);
+  if (__DEV__ && false) console.info(`[App] ${message}`); // Disabled by default
 };
 
 // Components
@@ -488,17 +488,10 @@ export default function App() {
         volume={speechVolume} // Use the speech volume state
       />
       
-      {/* Voice capturing indicator */}
-      {isVoiceCapturing && (
-        <View style={[styles.recordingIndicator, { top: 70 }]}>
-          <Text style={styles.recordingText}>Processing: "{spokenPrompt}"</Text>
-        </View>
-      )}
-      
       {/* Analysis indicator (subtle) */}
       {isAnalyzing && (
         <View style={customStyles.analysisIndicator}>
-          <Text style={customStyles.analysisText}>Analyzing in background...</Text>
+          <Text style={customStyles.analysisText}>Analyzing...</Text>
         </View>
       )}
       
@@ -621,9 +614,17 @@ const customStyles = StyleSheet.create({
   },
   buttonGroup: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: 25,
-    padding: 5,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 30,
+    padding: 6,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
   },
   analysisIndicator: {
     position: 'absolute',
@@ -637,6 +638,21 @@ const customStyles = StyleSheet.create({
   },
   analysisText: {
     color: '#444',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  recordingIndicator: {
+    position: 'absolute', 
+    top: 70,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    zIndex: 150,
+  },
+  recordingText: {
+    color: '#ffffff',
     fontSize: 14,
     fontWeight: '500',
   }

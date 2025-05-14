@@ -113,9 +113,8 @@ const ExpandedCard = ({ capture, dimensions, collapseCard }) => {
               
               {/* Extra padding at bottom */}
               <View style={{ height: 40 }} />
-            </ScrollView>
-          ) : (
-            <View style={styles.noAnalysisContainer}>
+            </ScrollView>          ) : (
+            <ScrollView style={styles.noAnalysisContainer}>
               <Text style={styles.noAnalysisTitle}>Scene Capture</Text>
               
               {/* Display custom prompt if available */}
@@ -132,7 +131,10 @@ const ExpandedCard = ({ capture, dimensions, collapseCard }) => {
               <Text style={styles.captureTimestamp}>
                 Captured on {new Date(capture.timestamp).toLocaleString()}
               </Text>
-            </View>
+              
+              {/* Extra padding at bottom */}
+              <View style={{ height: 20 }} />
+            </ScrollView>
           )}
         </View>
         
@@ -263,11 +265,8 @@ const styles = StyleSheet.create({
     color: '#888',
     marginTop: 12,
     textAlign: 'right',
-  },
-  noAnalysisContainer: {
+  },  noAnalysisContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     padding: 16,
   },
   noAnalysisTitle: {
@@ -275,16 +274,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 12,
     color: '#333',
+    textAlign: 'center',
   },
   noAnalysisText: {
     fontSize: 15,
     color: '#666',
     textAlign: 'center',
     marginBottom: 20,
-  },
-  captureTimestamp: {
+  },  captureTimestamp: {
     fontSize: 12,
     color: '#888',
+    textAlign: 'center',
+    marginBottom: 10,
   },
   closeButton: {
     position: 'absolute',

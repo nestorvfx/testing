@@ -4,13 +4,13 @@ import { Ionicons } from '@expo/vector-icons';
 import VoiceService from '../../services/voiceService';
 import { testMicrophone, fixAndroidAudioIssues } from '../../services/androidAudioFix';
 
-// Simple console logger
+// Simple console logger - reduced logging
 const logDebug = (message) => {
-  if (__DEV__) console.debug(`[VoiceButton] ${message}`);
+  if (__DEV__ && false) console.debug(`[VoiceButton] ${message}`); // Disabled by default
 };
 
 const logInfo = (message) => {
-  if (__DEV__) console.info(`[VoiceButton] ${message}`);
+  if (__DEV__ && false) console.info(`[VoiceButton] ${message}`); // Disabled by default
 };
 
 const logError = (message) => {
@@ -18,11 +18,11 @@ const logError = (message) => {
 };
 
 const logWarn = (message) => {
-  console.warn(`[VoiceButton] WARN: ${message}`);
+  if (__DEV__) console.warn(`[VoiceButton] WARN: ${message}`);
 };
 
 const logEvent = (event) => {
-  if (__DEV__) console.info(`[VoiceButton] Event: ${event}`);
+  if (__DEV__ && false) console.info(`[VoiceButton] Event: ${event}`); // Disabled by default
 };
 
 const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = false, onError = null }) => {
@@ -53,12 +53,12 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     pendingResults: [] // Add this to store multiple pending results
   }); 
   const resultWaitTimeMs = 1200; // Increased wait time before processing a final result
-    // Add silent period detection with different timers for brief silence vs long silence
+  // Add silent period detection with different timers for brief silence vs long silence
   const lastActivityTimeRef = useRef(Date.now());
   const silenceTimerRef = useRef(null);
   const briefSilenceTimerRef = useRef(null);
-  const silenceDurationMs = 10000; // 10 seconds of silence before pausing
-  const briefSilenceDurationMs = 2000; // 2 seconds of silence to finalize speech
+  const silenceDurationMs = 20000; // 20 seconds of silence before pausing (increased from 10s)
+  const briefSilenceDurationMs = 3000; // 3 seconds of silence to finalize speech (increased from 2s)
     // Flag for restart after error (rather than silence)
   const isErrorRestartRef = useRef(false);
   
@@ -131,8 +131,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     } catch (error) {
       // Ignore cleanup errors
     }
-  };
-  // Toggle voice recognition
+  };  // Toggle voice recognition
   const toggleVoiceRecognition = async () => {
     if (inCooldown) {
       return;
@@ -146,7 +145,8 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     } else if (isPaused) {
       // Resume from paused state
       resumeVoiceRecognition();
-      onToggleActive();
+      // This was called before state change, which caused issues
+      // onToggleActive();
     } else {
       // Not active, toggle on
       onToggleActive();
@@ -251,7 +251,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       // Ignore pause errors
     }
   };
-    // Resume voice recognition after pause
+  // Resume voice recognition after pause
   const resumeVoiceRecognition = async () => {
     if (isListening || inCooldown || isAnalyzing) {
       return;
@@ -269,6 +269,9 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       setIsListening(true);
       setIsPaused(false);
       
+      // Call onToggleActive AFTER state is updated to ensure proper sequence
+      onToggleActive();
+      
       // Reset silence detection
       lastActivityTimeRef.current = Date.now();
       startSilenceTimer();
@@ -279,12 +282,31 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       });
     }
   };
-    // Start silence timer
+  // Start silence timer with more intelligent handling
   const startSilenceTimer = () => {
     stopSilenceTimer();
     silenceTimerRef.current = setTimeout(() => {
-      logInfo('Detected long silence period, pausing voice recognition');
-      pauseVoiceRecognition();
+      // Check if there was any voice activity or results during the silence period
+      const currentTime = Date.now();
+      const timeSinceLastActivity = currentTime - lastActivityTimeRef.current;
+      
+      // If we had no activity for the full silence duration
+      if (timeSinceLastActivity >= silenceDurationMs) {
+        // Also check if we have any pending speech results that were never processed
+        const hasPendingResults = pendingResultsRef.current.pendingResults && 
+                                 pendingResultsRef.current.pendingResults.length > 0;
+                                 
+        // Process any pending results before pausing
+        if (hasPendingResults && !pendingResultsRef.current.silenceProcessed) {
+          finalizeSpeechAfterSilence();
+        }
+        
+        logInfo('Detected long silence period, pausing voice recognition');
+        pauseVoiceRecognition();
+      } else {
+        // If there was some activity, extend the timer
+        startSilenceTimer();
+      }
     }, silenceDurationMs);
   };
   
@@ -352,9 +374,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         }
       }
     }
-  };
-  
-  // Get background color based on state
+  };  // Get background color based on state
   const getBackgroundColor = () => {
     if (inCooldown) {
       return styles.cooldown.backgroundColor;
@@ -364,20 +384,21 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       return styles.disabled.backgroundColor;
     }
     
+    if (isPaused) {
+      return styles.paused.backgroundColor;
+    }
+    
     if (isListening) {
-      // If we're actively listening, use volume to adjust intensity
-      // Map volume from 0-10 to a color intensity
-      const baseColor = 29; // hue value for green
-      const saturation = Math.min(100, 60 + volume * 4); // increase saturation with volume
-      const lightness = Math.max(25, 50 - volume * 2); // decrease lightness with volume
-      return `hsl(${baseColor}, ${saturation}%, ${lightness}%)`;
+      // When listening, use a consistent blue color
+      return styles.listening.backgroundColor;
     }
     
     if (isActive) {
       return styles.active.backgroundColor;
     }
     
-    return styles.button.backgroundColor;
+    // When inactive, ensure it's white
+    return '#FFFFFF';
   };
     // Test microphone functionality
   const handleLongPress = async () => {
@@ -484,7 +505,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       const currentTime = Date.now();
       if (isSimilarToRecentResult(recognizedText, currentTime)) {
         const timeSinceLast = currentTime - lastResultTimeRef.current;
-        console.log(`Ignoring duplicate speech result: "${recognizedText}" received ${timeSinceLast}ms after previous`);
+        if (__DEV__) console.log(`Ignoring duplicate speech result: "${recognizedText}" received ${timeSinceLast}ms after previous`);
         return;
       }
       
@@ -761,8 +782,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       startSilenceTimer();
     }
   }, [isAnalyzing, isListening]);
-  
-  // Get status color and icon
+    // Get status color and icon
   let statusColor = '#666';
   let micIconName = 'mic-outline';
   
@@ -775,17 +795,22 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   } else if (isListening) {
     statusColor = '#5cb85c'; // Success for listening
     micIconName = 'mic';
+  } else if (isPaused) {
+    statusColor = '#5bc0de'; // Info for paused
+    micIconName = 'play-outline'; // Show play icon when paused
   } else if (isActive) {
     statusColor = '#5bc0de'; // Info for enabled but not listening
     micIconName = 'mic-outline';
   }
-    return (
+  
+  return (
     <TouchableOpacity
       style={[
         styles.button,
         inCooldown && styles.cooldown,
-        isActive && !isListening && styles.active,
+        isActive && !isListening && !isPaused && styles.active,
         isListening && styles.listening,
+        isPaused && styles.paused,
         { backgroundColor: getBackgroundColor() }
       ]}
       onPress={toggleVoiceRecognition}
@@ -796,24 +821,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       {isTesting ? (
         <ActivityIndicator color="#ffffff" size="small" />
       ) : (
-        <>
-          <Ionicons name={micIconName} size={22} color="white" />
-          
-          {/* Volume indicator (dots) when listening */}
-          {isListening && (
-            <View style={styles.volumeContainer}>
-              {[...Array(5)].map((_, i) => (
-                <View 
-                  key={i} 
-                  style={[
-                    styles.volumeDot,
-                    { opacity: i <= volume / 2 ? 0.9 : 0.3 }
-                  ]} 
-                />
-              ))}
-            </View>
-          )}
-        </>
+        <Ionicons name={micIconName} size={24} color="white" />
       )}
     </TouchableOpacity>
   );
@@ -821,40 +829,36 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
 
 const styles = StyleSheet.create({
   button: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(52, 73, 94, 0.8)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
     marginHorizontal: 6,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   active: {
-    backgroundColor: 'rgba(52, 152, 219, 0.8)',
+    backgroundColor: 'rgba(52, 152, 219, 0.9)',
   },
   listening: {
-    backgroundColor: 'rgba(46, 204, 113, 0.8)',
+    backgroundColor: 'rgba(52, 152, 219, 0.9)',
+  },
+  paused: {
+    backgroundColor: 'rgba(155, 89, 182, 0.9)',
   },
   disabled: {
     backgroundColor: 'rgba(149, 165, 166, 0.8)',
   },
   cooldown: {
     backgroundColor: 'rgba(231, 76, 60, 0.8)',
-  },
-  volumeContainer: {
-    position: 'absolute',
-    bottom: -10,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    width: '100%',
-    height: 4,
-  },
-  volumeDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'white',
-    marginHorizontal: 1,
   },
 });
 
