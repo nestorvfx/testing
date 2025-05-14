@@ -10,8 +10,8 @@ import { setupWebSpeechFallback, setupAndroidContinuousFallback } from './speech
 // Configuration values for Azure Speech Service
 const AZURE_CONFIG = {
   speech: {
-    subscriptionKey: 'your-subscription-key', // Replace with your key
-    region: 'westus2',                      // Replace with your region
+    subscriptionKey: '4zVpnnP5CnZ4TdOXEJKx12kGwYulddbsdLzftLgbU4q4iNdnEiY6JQQJ99BEACi5YpzXJ3w3AAAYACOGlNhJ', // Replace with your key
+    region: 'northeurope',                      // Replace with your region
   },
   speechRecognitionLanguage: 'en-US',
 };

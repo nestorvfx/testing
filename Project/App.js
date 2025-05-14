@@ -4,6 +4,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Camera } from 'expo-camera';
 
+// Helper functions for logging
+const logInfo = (message) => {
+  if (__DEV__) console.info(`[App] ${message}`);
+};
+
 // Components
 import CameraView from './components/camera/CameraView';
 import CaptureButton from './components/camera/CaptureButton';
@@ -96,15 +101,19 @@ export default function App() {
   
   // Ensure camera is ready before capturing
   const handleCapturePhoto = useCallback(async (customPrompt = '') => {
-    if (!cameraReady) {
+    if (!cameraReady || captureDisabled) {
       return;
     }
+
+    // Set capture disabled to prevent rapid multiple captures
+    setCaptureDisabled(true);
 
     try {
       // Try to capture photo
       const photo = await capturePhoto();
       
       if (!photo) {
+        setCaptureDisabled(false);
         return;
       }
       
@@ -120,30 +129,39 @@ export default function App() {
       
       // Handle immediate analysis
       if (isImmediateAnalysisActive) {
-        setIsAnalyzing(true);
-        
-        try {            
-          const analyzedResult = await analyzeImages([photoWithPrompt]);
+        // Begin analysis in a non-blocking way
+        setTimeout(async () => {
+          setIsAnalyzing(true);
           
-          if (analyzedResult && analyzedResult.length > 0) {
-            const analyzedPhoto = analyzedResult[0];
+          try {            
+            const analyzedResult = await analyzeImages([photoWithPrompt]);
             
-            updateCaptures(prevCaptures => 
-              prevCaptures.map(c => 
-                c.uri === photoWithPrompt.uri ? { ...c, ...analyzedPhoto, analyzed: true } : c
-              )
-            );
+            if (analyzedResult && analyzedResult.length > 0) {
+              const analyzedPhoto = analyzedResult[0];
+              
+              updateCaptures(prevCaptures => 
+                prevCaptures.map(c => 
+                  c.uri === photoWithPrompt.uri ? { ...c, ...analyzedPhoto, analyzed: true } : c
+                )
+              );
+            }
+          } catch (error) {
+            console.error('Error analyzing photo:', error);
+          } finally {
+            setIsAnalyzing(false);
           }
-        } catch (error) {
-          console.error('Error analyzing photo:', error);
-        } finally {
-          setIsAnalyzing(false);
-        }
+        }, 50); // Small delay to ensure UI responsiveness
       }
+      
+      // Re-enable capture immediately after the photo is taken and saved, regardless of analysis
+      setTimeout(() => {
+        setCaptureDisabled(false);
+      }, 300);
       
       return photoWithPrompt;
     } catch (error) {
       console.error('Error capturing photo:', error);
+      setCaptureDisabled(false); // Also re-enable on error
       throw error;
     } 
   }, [cameraReady, capturePhoto, addCapture, isImmediateAnalysisActive, updateCaptures, analyzeImages]);
@@ -169,83 +187,115 @@ export default function App() {
 
   // Handle speech recognition result
   const handleSpeechResult = useCallback((text, isFinalized, volume = 0) => {
-    // Update UI with speech
+    // Always update UI with speech for visual feedback
     setSpokenPrompt(text);
     setSpeechVolume(volume);
     
-    if (isFinalized && !isAnalyzing && !captureDisabled) {
-      setIsVoiceCapturing(true);
+    // Only capture photo when we have a finalized result
+    if (isFinalized) {
+      logInfo(`Processing finalized speech: "${text}"`);
       
-      // Disable capture to prevent multiple triggers
-      setCaptureDisabled(true);
+      // Check if capture is in progress
+      if (captureDisabled) {
+        logInfo('Capture already in progress, queuing this capture request');
+        
+        // Queue this capture for processing after current one completes
+        setTimeout(() => {
+          logInfo(`Processing queued capture for: "${text}"`);
+          processVoiceCapture(text);
+        }, 1500); // Wait 1.5 seconds before trying to process the queued capture
+        return;
+      }
       
-      // Take the photo directly
-      (async () => {
-        try {
-          // Check if camera is available
-          if (!cameraRef.current) {
-            setCaptureDisabled(false);
-            setIsVoiceCapturing(false);
-            return;
-          }
-          
-          // Take the photo directly
-          const photo = await cameraRef.current.takePictureAsync({
-            quality: 0.85,
-            skipProcessing: Platform.OS === 'android'
-          });
-          
-          if (!photo) {
-            setCaptureDisabled(false);
-            setIsVoiceCapturing(false);
-            return;
-          }
-          
-          // Create capture with prompt
-          const capture = {
-            ...photo,
-            customPrompt: text,
-            timestamp: Date.now()
-          };
-          
-          // Add to captures
-          addCapture(capture);
-          
-          // Use ref value instead of closure value to get latest state
-          const currentIsImmediateAnalysisActive = isImmediateAnalysisActiveRef.current;
-          
-          // Handle immediate analysis if enabled
-          if (currentIsImmediateAnalysisActive) {
-            setIsAnalyzing(true);
-            try {
-              const analyzedResult = await analyzeImages([capture]);
-              if (analyzedResult && analyzedResult.length > 0) {
-                updateCaptures(prevCaptures => 
-                  prevCaptures.map(c => 
-                    c.uri === capture.uri ? { ...c, ...analyzedResult[0], analyzed: true } : c
-                  )
-                );
-              }
-            } catch (err) {
-              console.error('Analysis error:', err);
-            } finally {
-              setIsAnalyzing(false);
-            }
-          }
-        } catch (err) {
-          console.error('Error during direct camera capture:', err);
-        } finally {
-          // Reset state
-          setTimeout(() => {
-            setIsVoiceCapturing(false);
-            setSpokenPrompt('');
-            setSpeechVolume(0);
-            setCaptureDisabled(false);
-          }, 1000);
-        }
-      })();
+      // Process the capture immediately if not disabled
+      processVoiceCapture(text);
     }
-  }, [spokenPrompt, isAnalyzing, captureDisabled, cameraRef, addCapture, updateCaptures, analyzeImages]);
+  }, [spokenPrompt, cameraRef, addCapture, updateCaptures, analyzeImages]);
+  
+  // Separate function for voice capture processing to avoid code duplication
+  const processVoiceCapture = useCallback(async (text) => {
+    // Don't proceed if camera isn't ready
+    if (!cameraRef.current) {
+      logInfo('Camera not ready, cannot capture');
+      return;
+    }
+    
+    // isAnalyzing should NOT block voice capture
+    setIsVoiceCapturing(true);
+    
+    // Disable capture to prevent multiple triggers
+    setCaptureDisabled(true);
+    
+    // Store timestamp to help identify duplicate captures
+    const captureTimestamp = Date.now();
+    
+    try {
+      // Take the photo directly
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+        skipProcessing: Platform.OS === 'android'
+      });
+      
+      if (!photo) {
+        throw new Error('Failed to capture photo');
+      }
+      
+      // Create capture with prompt
+      const capture = {
+        ...photo,
+        customPrompt: text,
+        timestamp: captureTimestamp
+      };
+      
+      logInfo(`Capturing photo with prompt: "${text}"`);
+      
+      // Add to captures
+      addCapture(capture);
+      
+      // Use ref value instead of closure value to get latest state
+      const currentIsImmediateAnalysisActive = isImmediateAnalysisActiveRef.current;
+      
+      // Handle immediate analysis if enabled, but don't block the UI
+      if (currentIsImmediateAnalysisActive) {
+        setIsAnalyzing(true);
+        // Use a non-blocking approach for analysis to prevent freezing image capture
+        setTimeout(async () => {
+          try {
+            const analyzedResult = await analyzeImages([capture]);
+            if (analyzedResult && analyzedResult.length > 0) {
+              updateCaptures(prevCaptures => 
+                prevCaptures.map(c => 
+                  c.uri === capture.uri ? { ...c, ...analyzedResult[0], analyzed: true } : c
+                )
+              );
+            }
+          } catch (err) {
+            console.error('Analysis error:', err);
+          } finally {
+            setIsAnalyzing(false);
+          }
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error during direct camera capture:', err);
+      // Log more detailed error info
+      if (err.message) logInfo(`Capture error: ${err.message}`);
+    } finally {
+      // Reset capture state immediately, not waiting for analysis to complete
+      setIsVoiceCapturing(false);
+      setSpokenPrompt('');
+      setSpeechVolume(0);
+      
+      // Allow new captures sooner
+      setTimeout(() => {
+        setCaptureDisabled(false);
+        logInfo('Re-enabling capture button');
+      }, 1200); // Increased to 1.2 seconds to prevent rapid captures
+      
+      // IMPORTANT: Don't turn off voice recognition after a capture
+      // This allows the system to continue listening for more prompts
+    }
+  }, [cameraRef, addCapture, updateCaptures, analyzeImages]);
 
   // Deep analysis states
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
@@ -298,6 +348,126 @@ export default function App() {
     handleDeepAnalysis(prompt);
   }, [handleDeepAnalysis]);
   
+  // Add additional voice recognition robustness by implementing a retry mechanism
+  const maxVoiceRetries = 3;
+  const [voiceRetryCount, setVoiceRetryCount] = useState(0);
+  const voiceRetryTimerRef = useRef(null);
+  
+  // Function to automatically retry voice activation if it appears to be stuck
+  const startVoiceRetryTimer = useCallback(() => {
+    // Clear any existing timer
+    if (voiceRetryTimerRef.current) {
+      clearTimeout(voiceRetryTimerRef.current);
+    }
+    
+    // Set a new timer that will check if voice recognition is working
+    voiceRetryTimerRef.current = setTimeout(() => {
+      // Only attempt retry if voice is supposed to be active
+      if (isVoiceActive) {
+        // If we've had no speech activity for a while, try restarting
+        const timeSinceLastActivity = Date.now() - lastVoiceActivityRef.current;
+        
+        if (timeSinceLastActivity > 20000 && voiceRetryCount < maxVoiceRetries) { // 20 seconds
+          logInfo('Voice recognition appears stuck, attempting automatic restart');
+          setVoiceRetryCount(prev => prev + 1);
+          
+          // Toggle off and on to restart
+          setIsVoiceActive(false);
+          setTimeout(() => {
+            setIsVoiceActive(true);
+            // Start another retry timer
+            startVoiceRetryTimer();
+          }, 1000);
+        } else if (voiceRetryCount >= maxVoiceRetries) {
+          // Too many retries, just turn it off
+          logInfo('Maximum voice retry attempts reached, disabling voice recognition');
+          setIsVoiceActive(false);
+          setVoiceRetryCount(0);
+        } else {
+          // Still within retry limits, start another timer
+          startVoiceRetryTimer();
+        }
+      }
+    }, 30000); // Check every 30 seconds
+  }, [isVoiceActive, voiceRetryCount]);
+  
+  // Keep track of last voice activity timestamp
+  const lastVoiceActivityRef = useRef(Date.now());
+  
+  // Update last activity timestamp when we get speech
+  useEffect(() => {
+    if (spokenPrompt) {
+      lastVoiceActivityRef.current = Date.now();
+    }
+  }, [spokenPrompt]);
+  
+  // Start retry timer when voice is activated
+  useEffect(() => {
+    if (isVoiceActive) {
+      lastVoiceActivityRef.current = Date.now(); // Reset timestamp
+      startVoiceRetryTimer();
+    } else {
+      // Clear timer when voice is deactivated
+      if (voiceRetryTimerRef.current) {
+        clearTimeout(voiceRetryTimerRef.current);
+      }
+      setVoiceRetryCount(0); // Reset retry count
+    }
+    
+    return () => {
+      if (voiceRetryTimerRef.current) {
+        clearTimeout(voiceRetryTimerRef.current);
+      }
+    };
+  }, [isVoiceActive, startVoiceRetryTimer]);
+  
+  // Enhanced error handling for voice recognition
+  const maxErrorsBeforeAlert = 5;
+  const [voiceErrorCount, setVoiceErrorCount] = useState(0);
+  
+  // Function to handle voice recognition errors
+  const handleVoiceError = useCallback((error) => {
+    logInfo(`Voice recognition error: ${error.message || 'Unknown error'}`);
+    
+    // Increment error count
+    setVoiceErrorCount(prev => {
+      const newCount = prev + 1;
+      
+      // Alert user if too many errors
+      if (newCount >= maxErrorsBeforeAlert) {
+        Alert.alert(
+          "Voice Recognition Issue",
+          "There seems to be a problem with voice recognition. Would you like to try restarting it?",
+          [
+            {
+              text: "Restart",
+              onPress: () => {
+                // Reset error count
+                setVoiceErrorCount(0);
+                
+                // Toggle off and back on to restart
+                setIsVoiceActive(false);
+                setTimeout(() => setIsVoiceActive(true), 1000);
+              }
+            },
+            {
+              text: "Turn Off",
+              onPress: () => {
+                setVoiceErrorCount(0);
+                setIsVoiceActive(false);
+              }
+            }
+          ]
+        );
+        
+        // Reset after showing alert
+        return 0;
+      }
+      
+      return newCount;
+    });
+  }, []);
+  
   // Main app UI
   return (
     <View style={styles.container}>
@@ -325,6 +495,13 @@ export default function App() {
         </View>
       )}
       
+      {/* Analysis indicator (subtle) */}
+      {isAnalyzing && (
+        <View style={customStyles.analysisIndicator}>
+          <Text style={customStyles.analysisText}>Analyzing in background...</Text>
+        </View>
+      )}
+      
       {/* Top control bar for voice and immediate analysis buttons */}
       <View style={customStyles.topControlBar}>
         <View style={customStyles.buttonGroup}>
@@ -332,7 +509,8 @@ export default function App() {
             isActive={isVoiceActive}
             onToggleActive={() => setIsVoiceActive(!isVoiceActive)}
             onSpeechResult={(text, isFinalized, volume) => handleSpeechResult(text, isFinalized, volume)}
-            isAnalyzing={isAnalyzing || isVoiceCapturing}
+            isAnalyzing={isVoiceCapturing} // Only block during voice capture, not analysis
+            onError={handleVoiceError} // Pass error handler to VoiceButton
           />
           <ImmediateAnalysisButton 
             isActive={isImmediateAnalysisActive} 
@@ -347,7 +525,7 @@ export default function App() {
           <CaptureButton 
             onPress={() => handleCapturePhoto()}
             isCapturing={isCapturing}
-            disabled={!cameraReady || isAnalyzing || captureDisabled}
+            disabled={!cameraReady || captureDisabled} // Remove isAnalyzing from disabled condition
             captureButtonScale={captureButtonScale}
           />
       )}
@@ -446,5 +624,20 @@ const customStyles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.2)',
     borderRadius: 25,
     padding: 5,
+  },
+  analysisIndicator: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    zIndex: 150,
+  },
+  analysisText: {
+    color: '#444',
+    fontSize: 14,
+    fontWeight: '500',
   }
 });

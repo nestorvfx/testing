@@ -69,11 +69,67 @@ export const setupAndroidContinuousFallback = async (azureConfig) => {
     
     // Create a wrapper with helper methods
     const androidModule = {
-      ...AzureContinuousSpeech,
-      
-      // Helper to configure listeners in one call
+      ...AzureContinuousSpeech,      // Helper to configure listeners in one call
       configureListeners: async (listeners) => {
-        await configureSpeechRecognition(listeners);
+        // Add tracking for de-duplication
+        let lastResultTime = 0;
+        let lastResultText = '';
+        const resultDedupeTimeMs = 1500; // 1.5 seconds between results
+        
+        // Create wrapper functions to ensure data format is consistent
+        const wrappedListeners = {
+          onSpeechStart: (event) => {
+            if (listeners.onSpeechStart) listeners.onSpeechStart(event);
+          },
+          
+          onSpeechEnd: (event) => {
+            if (listeners.onSpeechEnd) listeners.onSpeechEnd(event);
+          },
+          
+          onSpeechResults: (event) => {
+            // Get the text from the event
+            const recognizedText = Array.isArray(event.value) ? event.value[0] : event.value || '';
+            
+            // Check for duplicate results (same text within a short time window)
+            const now = Date.now();
+            const isDuplicate = 
+              recognizedText === lastResultText && 
+              (now - lastResultTime) < resultDedupeTimeMs;
+            
+            if (isDuplicate) {
+              console.log(`Ignoring duplicate speech result: "${recognizedText}" received ${now - lastResultTime}ms after previous`);
+              return;
+            }
+            
+            // Update de-duplication tracking
+            lastResultText = recognizedText;
+            lastResultTime = now;
+            
+            // Ensure the event has the correct format for consistent processing
+            const formattedResults = {
+              value: Array.isArray(event.value) ? event.value : [recognizedText],
+              isFinal: event.isFinal !== undefined ? event.isFinal : true
+            };
+            
+            if (listeners.onSpeechResults) listeners.onSpeechResults(formattedResults);
+          },
+          
+          onSpeechPartialResults: (event) => {
+            // Ensure the event has the correct format for consistent processing
+            const formattedResults = {
+              value: Array.isArray(event.value) ? event.value : [event.value || ''],
+              isFinal: false
+            };
+            
+            if (listeners.onSpeechPartialResults) listeners.onSpeechPartialResults(formattedResults);
+          },
+          
+          onSpeechError: (error) => {
+            if (listeners.onSpeechError) listeners.onSpeechError(error);
+          }
+        };
+        
+        await AzureContinuousSpeech.setCallbacks(wrappedListeners);
         return true;
       },
       

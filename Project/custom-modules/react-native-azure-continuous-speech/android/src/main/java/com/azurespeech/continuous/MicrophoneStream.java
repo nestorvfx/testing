@@ -12,13 +12,14 @@ import com.microsoft.cognitiveservices.speech.audio.PullAudioInputStreamCallback
  * MicrophoneStream exposes the Android Microphone as a PullAudioInputStreamCallback
  * to be consumed by the Azure Speech SDK.
  * It configures the microphone with 16 kHz sample rate, 16 bit samples, mono (single-channel).
+ * Based on the Azure Cognitive Services Speech SDK for Android continuous-reco sample.
  */
 public class MicrophoneStream extends PullAudioInputStreamCallback {
     private final static String TAG = "MicrophoneStream";
     private final static int SAMPLE_RATE = 16000;
     private final AudioStreamFormat format;
     private AudioRecord recorder;
-    private boolean isRecording = false;
+    private boolean initialized = false;
 
     public MicrophoneStream() {
         this.format = AudioStreamFormat.getWaveFormatPCM(SAMPLE_RATE, (short)16, (short)1);
@@ -31,7 +32,7 @@ public class MicrophoneStream extends PullAudioInputStreamCallback {
 
     @Override
     public int read(byte[] bytes) {
-        if (this.recorder != null && this.isRecording) {
+        if (this.recorder != null) {
             long ret = this.recorder.read(bytes, 0, bytes.length);
             return (int) ret;
         }
@@ -41,45 +42,31 @@ public class MicrophoneStream extends PullAudioInputStreamCallback {
     @Override
     public void close() {
         Log.d(TAG, "Closing microphone stream");
-        stopRecording();
         if (this.recorder != null) {
             try {
+                this.recorder.stop();
                 this.recorder.release();
+                Log.d(TAG, "Microphone released successfully");
             } catch (Exception e) {
                 Log.e(TAG, "Error releasing recorder: " + e.getMessage());
             } finally {
                 this.recorder = null;
+                this.initialized = false;
             }
         }
-    }
-
-    public void startRecording() {
-        if (this.recorder != null && !this.isRecording) {
-            try {
-                this.recorder.startRecording();
-                this.isRecording = true;
-                Log.d(TAG, "Started recording");
-            } catch (Exception e) {
-                Log.e(TAG, "Error starting recording: " + e.getMessage());
-            }
-        }
-    }
-
-    public void stopRecording() {
-        if (this.recorder != null && this.isRecording) {
-            try {
-                this.recorder.stop();
-                this.isRecording = false;
-                Log.d(TAG, "Stopped recording");
-            } catch (Exception e) {
-                Log.e(TAG, "Error stopping recording: " + e.getMessage());
-            }
-        }
-    }
-
-    private void initMic() {
+    }    private void initMic() {
         Log.d(TAG, "Initializing microphone");
         try {
+            // Calculate the minimum buffer size required
+            int minBufferSize = AudioRecord.getMinBufferSize(
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT);
+            
+            // Increase buffer size for better audio quality
+            int bufferSize = Math.max(minBufferSize, 4096) * 2;
+            Log.d(TAG, "Using buffer size: " + bufferSize + " (min required: " + minBufferSize + ")");
+            
             // Note: Speech SDK currently supports 16 kHz sample rate, 16 bit samples, mono (single-channel) only
             AudioFormat af = new AudioFormat.Builder()
                     .setSampleRate(SAMPLE_RATE)
@@ -90,24 +77,28 @@ public class MicrophoneStream extends PullAudioInputStreamCallback {
             this.recorder = new AudioRecord.Builder()
                     .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
                     .setAudioFormat(af)
+                    .setBufferSizeInBytes(bufferSize)
                     .build();
             
-            // Don't automatically start recording - we'll do this explicitly
-            Log.d(TAG, "Microphone initialized successfully");
+            // Start recording immediately as in the continuous-reco sample
+            this.recorder.startRecording();
+            this.initialized = true;
+            Log.d(TAG, "Microphone initialized and started successfully");
         } catch (Exception e) {
             Log.e(TAG, "Error initializing microphone: " + e.getMessage());
             if (this.recorder != null) {
                 this.recorder.release();
                 this.recorder = null;
             }
+            this.initialized = false;
         }
     }
-
+    
     public static MicrophoneStream create() {
         return new MicrophoneStream();
     }
     
     public boolean isInitialized() {
-        return this.recorder != null;
+        return this.initialized;
     }
 }

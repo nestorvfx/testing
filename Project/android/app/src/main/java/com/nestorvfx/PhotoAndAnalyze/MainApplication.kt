@@ -24,7 +24,15 @@ class MainApplication : Application(), ReactApplication {
           override fun getPackages(): List<ReactPackage> {
             val packages = PackageList(this).packages
             // Packages that cannot be autolinked yet can be added manually here, for example:
-            // packages.add(MyReactNativePackage())
+            // Manual registration of the Azure Continuous Speech module
+            try {
+              val packageClass = Class.forName("com.azurespeech.continuous.AzureContinuousSpeechPackage")
+              val packageInstance = packageClass.newInstance() as ReactPackage
+              packages.add(packageInstance)
+            } catch (e: Exception) {
+              // Handle the exception (module not found, etc.)
+              println("Failed to load AzureContinuousSpeechPackage: ${e.message}")
+            }
             return packages
           }
 

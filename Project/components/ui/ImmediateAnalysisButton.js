@@ -32,7 +32,6 @@ const ImmediateAnalysisButton = ({ isActive, onToggle, isAnalyzing }) => {
       pulseAnim.stopAnimation();
     };
   }, [isAnalyzing, pulseAnim]);
-
   return (
     <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
       <TouchableOpacity
@@ -43,7 +42,7 @@ const ImmediateAnalysisButton = ({ isActive, onToggle, isAnalyzing }) => {
         ]}
         onPress={onToggle}
         activeOpacity={0.7}
-        disabled={isAnalyzing}
+        // Allow toggling even during analysis
       >
         <Ionicons 
           name={isActive ? "flash" : "flash-outline"} 

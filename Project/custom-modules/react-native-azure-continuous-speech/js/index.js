@@ -50,236 +50,189 @@ class AzureContinuousSpeechRecognizer {
   }
   
   /**
-   * Initialize the speech recognizer
+   * Initialize the speech recognizer with Azure credentials
    * @param {string} subscriptionKey - Azure Speech subscription key
-   * @param {string} region - Azure Speech region
+   * @param {string} region - Azure Speech service region
    * @param {Object} options - Additional options
-   * @returns {Promise<string>} Success message or error
+   * @param {string} options.language - Recognition language (default: 'en-US')
+   * @returns {Promise<boolean>} True if initialization successful
    */
   async initialize(subscriptionKey, region, options = {}) {
-    if (Platform.OS !== 'android' || !AzureContinuousSpeech) {
-      throw new Error('AzureContinuousSpeech module is only available on Android');
+    if (!AzureContinuousSpeech) {
+      console.error('AzureContinuousSpeech module not available');
+      return false;
     }
     
-    // Initialize the native module
-    await AzureContinuousSpeech.initialize(subscriptionKey, region, options);
-    this.isInitialized = true;
-    
-    // Setup event listeners
-    this._setupEventListeners();
-    
-    return "Initialized Azure Continuous Speech successfully";
+    try {
+      await AzureContinuousSpeech.initialize(subscriptionKey, region, options);
+      this.isInitialized = true;
+      
+      // Setup event listeners
+      this._setupEventListeners();
+      
+      return true;
+    } catch (error) {
+      console.error('Error initializing Azure Speech:', error);
+      return false;
+    }
   }
   
   /**
-   * Set up event listeners for the native module
+   * Start continuous speech recognition
+   * @returns {Promise<boolean>} True if started successfully
+   */
+  async start() {
+    if (!this.isInitialized || !AzureContinuousSpeech) {
+      console.error('AzureContinuousSpeech not initialized');
+      return false;
+    }
+    
+    if (this.isListening) {
+      console.warn('Already listening');
+      return true;
+    }
+    
+    try {
+      await AzureContinuousSpeech.start();
+      this.isListening = true;
+      return true;
+    } catch (error) {
+      console.error('Error starting speech recognition:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Stop continuous speech recognition
+   * @returns {Promise<boolean>} True if stopped successfully
+   */
+  async stop() {
+    if (!this.isInitialized || !AzureContinuousSpeech) {
+      console.error('AzureContinuousSpeech not initialized');
+      return false;
+    }
+    
+    if (!this.isListening) {
+      console.warn('Not listening');
+      return true;
+    }
+    
+    try {
+      await AzureContinuousSpeech.stop();
+      this.isListening = false;
+      return true;
+    } catch (error) {
+      console.error('Error stopping speech recognition:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Destroy the speech recognizer and release resources
+   * @returns {Promise<boolean>} True if destroyed successfully
+   */
+  async destroy() {
+    if (!this.isInitialized || !AzureContinuousSpeech) {
+      return true;
+    }
+    
+    try {
+      // Remove all listeners
+      this._removeAllListeners();
+      
+      await AzureContinuousSpeech.destroy();
+      this.isInitialized = false;
+      this.isListening = false;
+      return true;
+    } catch (error) {
+      console.error('Error destroying speech recognizer:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Set up callback functions for speech events
+   * @param {Object} callbacks - Callback functions
+   */
+  async setCallbacks(callbacks) {
+    if (callbacks.onSpeechStart) this.onSpeechStart = callbacks.onSpeechStart;
+    if (callbacks.onSpeechEnd) this.onSpeechEnd = callbacks.onSpeechEnd;
+    if (callbacks.onSpeechResults) this.onSpeechResults = callbacks.onSpeechResults;
+    if (callbacks.onSpeechPartialResults) this.onSpeechPartialResults = callbacks.onSpeechPartialResults;
+    if (callbacks.onSpeechError) this.onSpeechError = callbacks.onSpeechError;
+  }
+  
+  /**
+   * Setup event listeners for native module events
    * @private
    */
   _setupEventListeners() {
-    // Remove any existing listeners
-    this._removeEventListeners();
+    if (!azureSpeechEmitter) return;
     
-    // Add new listeners
-    if (azureSpeechEmitter) {
-      // Listen for speech recognition events
+    // Remove any existing listeners
+    this._removeAllListeners();
+    
+    // Add listeners for each event type
+    this.listeners.push(
+      azureSpeechEmitter.addListener('onSpeechStart', (event) => {
+        if (this.onSpeechStart) this.onSpeechStart(event);
+      })
+    );
+    
+    this.listeners.push(
+      azureSpeechEmitter.addListener('onSpeechEnd', (event) => {
+        this.isListening = false;
+        if (this.onSpeechEnd) this.onSpeechEnd(event);
+      })
+    );
       this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechRecognizing', event => {
-          if (this.onSpeechPartialResults) {
-            this.onSpeechPartialResults({ value: [event.text], isFinal: false });
-          }
-        })
-      );
-      
-      this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechRecognized', event => {
-          if (this.onSpeechResults && event.isFinal) {
-            this.onSpeechResults({ value: [event.text], isFinal: true });
-          }
-        })
-      );
-      
-      // Session events
-      this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechSessionStarted', event => {
-          if (this.onSpeechStart) {
-            this.onSpeechStart(event);
-          }
-        })
-      );
-      
-      this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechSessionStopped', event => {
-          this.isListening = false;
-          if (this.onSpeechEnd) {
-            this.onSpeechEnd(event);
-          }
-        })
-      );
-      
-      // Error and cancellation events
-      this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechCanceled', event => {
-          this.isListening = false;
-          if (this.onSpeechError) {
-            this.onSpeechError(event);
-          }
-        })
-      );
-      
-      this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechRecognitionError', event => {
-          this.isListening = false;
-          if (this.onSpeechError) {
-            this.onSpeechError(event);
-          }
-        })
-      );
-      
-      // Start/stop events
-      this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechRecognitionStarted', event => {
-          this.isListening = true;
-          if (this.onSpeechStart) {
-            this.onSpeechStart(event);
-          }
-        })
-      );
-      
-      this.listeners.push(
-        azureSpeechEmitter.addListener('SpeechRecognitionStopped', event => {
-          this.isListening = false;
-          if (this.onSpeechEnd) {
-            this.onSpeechEnd(event);
-          }
-        })
-      );
-    }
+      azureSpeechEmitter.addListener('onSpeechResults', (event) => {
+        // Format the results to match the expected structure
+        const formattedResults = {
+          value: [event.value || ''],
+          isFinal: event.isFinal || true
+        };
+        if (this.onSpeechResults) this.onSpeechResults(formattedResults);
+      })
+    );
+    
+    this.listeners.push(
+      azureSpeechEmitter.addListener('onSpeechPartialResults', (event) => {
+        // Format the partial results to match the expected structure
+        const formattedResults = {
+          value: [event.value || ''],
+          isFinal: false
+        };
+        if (this.onSpeechPartialResults) this.onSpeechPartialResults(formattedResults);
+      })
+    );
+    
+    this.listeners.push(
+      azureSpeechEmitter.addListener('onSpeechError', (event) => {
+        this.isListening = false;
+        if (this.onSpeechError) this.onSpeechError(event);
+      })
+    );
   }
   
   /**
    * Remove all event listeners
    * @private
    */
-  _removeEventListeners() {
-    if (this.listeners && this.listeners.length > 0) {
+  _removeAllListeners() {
+    if (this.listeners.length > 0) {
       this.listeners.forEach(listener => {
-        if (listener && typeof listener.remove === 'function') {
+        if (listener) {
           listener.remove();
         }
       });
       this.listeners = [];
     }
   }
-  
-  /**
-   * Start continuous speech recognition
-   * @returns {Promise<string>} Success message or error
-   */
-  async start() {
-    if (Platform.OS !== 'android' || !AzureContinuousSpeech) {
-      throw new Error('AzureContinuousSpeech module is only available on Android');
-    }
-    
-    if (!this.isInitialized) {
-      throw new Error('Azure Continuous Speech not initialized');
-    }
-    
-    if (this.isListening) {
-      return "Already listening";
-    }
-    
-    const result = await AzureContinuousSpeech.startContinuousRecognition();
-    this.isListening = true;
-    return result;
-  }
-  
-  /**
-   * Stop continuous speech recognition
-   * @returns {Promise<string>} Success message or error
-   */
-  async stop() {
-    if (Platform.OS !== 'android' || !AzureContinuousSpeech) {
-      throw new Error('AzureContinuousSpeech module is only available on Android');
-    }
-    
-    if (!this.isInitialized) {
-      throw new Error('Azure Continuous Speech not initialized');
-    }
-    
-    if (!this.isListening) {
-      return "Not listening";
-    }
-    
-    const result = await AzureContinuousSpeech.stopContinuousRecognition();
-    this.isListening = false;
-    return result;
-  }
-  
-  /**
-   * Destroy the speech recognizer and free resources
-   * @returns {Promise<string>} Success message or error
-   */
-  async destroy() {
-    if (Platform.OS !== 'android' || !AzureContinuousSpeech) {
-      return "Not available on this platform";
-    }
-    
-    // Remove event listeners
-    this._removeEventListeners();
-    
-    if (!this.isInitialized) {
-      return "Not initialized";
-    }
-    
-    // Stop recognition if it's running
-    if (this.isListening) {
-      await this.stop();
-    }
-    
-    // Destroy the recognizer
-    const result = await AzureContinuousSpeech.destroyRecognizer();
-    this.isInitialized = false;
-    this.isListening = false;
-    
-    return result;
-  }
 }
 
-// Export a singleton instance
-const azureContinuousSpeech = new AzureContinuousSpeechRecognizer();
+// Create singleton instance
+const AzureContinuousSpeechInstance = new AzureContinuousSpeechRecognizer();
 
-/**
- * Configure the speech recognizer with the provided options
- * @param {Object} options - Configuration options
- * @returns {Promise<boolean>} - Whether configuration was successful
- */
-export const configureSpeechRecognition = async (options = {}) => {
-  if (!azureContinuousSpeech) return false;
-  
-  // Set up event handlers if provided
-  if (options.onSpeechStart) {
-    azureContinuousSpeech.onSpeechStart = options.onSpeechStart;
-  }
-  
-  if (options.onSpeechEnd) {
-    azureContinuousSpeech.onSpeechEnd = options.onSpeechEnd;
-  }
-  
-  if (options.onSpeechResults) {
-    azureContinuousSpeech.onSpeechResults = options.onSpeechResults;
-  }
-  
-  if (options.onSpeechPartialResults) {
-    azureContinuousSpeech.onSpeechPartialResults = options.onSpeechPartialResults;
-  }
-  
-  if (options.onSpeechError) {
-    azureContinuousSpeech.onSpeechError = options.onSpeechError;
-  }
-  
-  return true;
-};
-
-// Export default and named exports for flexibility
-export { azureContinuousSpeech };
-export default azureContinuousSpeech;
+// Export the singleton
+export default AzureContinuousSpeechInstance;

@@ -38,12 +38,28 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
         super(reactContext);
         this.reactContext = reactContext;
         Log.d(TAG, "AzureContinuousSpeechModule initialized");
-    }
-
-    @NonNull
-    @Override
+    }    @Override
     public String getName() {
         return "AzureContinuousSpeech";
+    }
+
+    @Override
+    public Map<String, Object> getConstants() {
+        final Map<String, Object> constants = new HashMap<>();
+        constants.put("isAvailable", true);
+        return constants;
+    }
+
+    @ReactMethod
+    public void addListener(String eventName) {
+        // Keep track of event listeners
+        Log.d(TAG, "Adding listener for " + eventName);
+    }
+
+    @ReactMethod
+    public void removeListeners(Integer count) {
+        // Remove event listeners
+        Log.d(TAG, "Removing listeners, count: " + count);
     }
 
     private void sendEvent(String eventName, WritableMap params) {
@@ -67,31 +83,44 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
             // Configure speech recognition language
             String language = options != null && options.hasKey("language") ? 
                 options.getString("language") : "en-US";
-            speechConfig.setSpeechRecognitionLanguage(language);
-            
-            // Enable continuous recognition
+            speechConfig.setSpeechRecognitionLanguage(language);            // Enable continuous recognition with optimized settings
             speechConfig.setProperty("SpeechServiceResponse_PostProcessingOption", "TrueText");
             
-            // Configure audio
-            speechConfig.setProperty("Audio_AudioProcessingOptions", "2");
+            // Configure audio processing for voice recognition
+            speechConfig.setProperty("Audio_AudioProcessingOptions", "2"); // Enhanced processing
             
             // Critical properties for Android microphone
             speechConfig.setProperty("SPEECH-AudioSessionCategoryType", "PlayAndRecord");
             speechConfig.setProperty("SPEECH-AudioSessionMode", "VideoRecording");
             
-            // Improved Android audio settings
-            speechConfig.setProperty("SPEECH-AudioRecordingGain", "2.0");
+            // Optimized Android audio settings
+            speechConfig.setProperty("SPEECH-AudioRecordingGain", "3.0"); // Increased gain
             speechConfig.setProperty("SPEECH-AllowBackgroundAudioProcessing", "1");
-            speechConfig.setProperty("SPEECH-AudioRecordingBufferLengthMs", "1500");
-            speechConfig.setProperty("SPEECH-AudioRecordingDeviceBufferSize", "25600");
-            speechConfig.setProperty("SPEECH-AudioRecordingNotificationsBufferSize", "51200");
+            speechConfig.setProperty("SPEECH-AudioRecordingBufferLengthMs", "2000"); // Increased buffer
+            speechConfig.setProperty("SPEECH-AudioRecordingDeviceBufferSize", "32768"); // Increased buffer
+            speechConfig.setProperty("SPEECH-AudioRecordingNotificationsBufferSize", "65536"); // Increased buffer
             
-            // Lower voice detection threshold to improve recognition
-            speechConfig.setProperty("SPEECH-VoiceDetectionSensitivity", "0.2");
-            speechConfig.setProperty("SPEECH-VoiceDetectionThreshold", "0.1");
+            // Improved voice detection settings
+            speechConfig.setProperty("SPEECH-VoiceDetectionSensitivity", "0.3"); // Slightly increased sensitivity
+            speechConfig.setProperty("SPEECH-VoiceDetectionThreshold", "0.2"); // Slightly increased threshold
             
-            // Setup continuous recognition
-            speechConfig.setProperty("Speech_SegmentationSilenceTimeoutMs", "700");
+            // Setup continuous recognition parameters
+            speechConfig.setProperty("Speech_SegmentationSilenceTimeoutMs", "500");
+            speechConfig.setProperty("Speech_EnableAudioLogging", "1");
+            speechConfig.setProperty("SpeechServiceConnection_InitialSilenceTimeoutMs", "5000");
+            speechConfig.setProperty("SpeechServiceConnection_EndSilenceTimeoutMs", "800");
+            
+            // Additional speech recognition improvements
+            speechConfig.setProperty("SPEECH-KeywordRecognitionEnergyThreshold", "0.5");
+            speechConfig.setProperty("SPEECH-KeywordRecognitionSensitivity", "0.4");
+            
+            // Enhance recognition confidence settings
+            speechConfig.setProperty("Speech_RecognizedPhraseConfidenceThreshold", "0.6");
+            speechConfig.setProperty("Speech_FilterProfanity", "0");
+            
+            // Enable detailed recognition results
+            speechConfig.setProperty("SPEECH-SegmentationMode", "continuous");
+            speechConfig.setProperty("SPEECH-IncompleteSpeechRejectionThreshold", "0.3");
             
             // Initialize microphone stream
             microphoneStream = MicrophoneStream.create();
@@ -116,10 +145,7 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
             Log.e(TAG, "Error initializing Azure Speech SDK", e);
             promise.reject("INIT_ERROR", "Error initializing: " + e.getMessage());
         }
-    }
-
-    private void setupRecognitionEventListeners() {
-        // Fired when speech is recognized
+    }    private void setupRecognitionEventListeners() {        // Fired when speech is recognized
         recognizer.recognized.addEventListener((object, recognitionEventArgs) -> {
             try {
                 WritableMap params = Arguments.createMap();
@@ -128,31 +154,43 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
                     String text = recognitionEventArgs.getResult().getText();
                     Log.d(TAG, "Final recognition result: " + text);
                     
-                    params.putString("text", text);
-                    params.putBoolean("isFinal", true);
-                    sendEvent("SpeechRecognized", params);
+                    // Only send results if we have valid text and we're still listening
+                    if (text != null && !text.isEmpty() && isListening) {
+                        params.putString("value", text);
+                        params.putBoolean("isFinal", true);
+                        
+                        sendEvent("onSpeechResults", params);
+                        
+                        // Immediately stop listening to prevent duplicate final results
+                        try {
+                            recognizer.stopContinuousRecognitionAsync();
+                            isListening = false;
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error stopping recognition after final result", e);
+                        }
+                    }
                 } else if (recognitionEventArgs.getResult().getReason() == ResultReason.NoMatch) {
                     Log.d(TAG, "No speech recognized");
-                    params.putString("text", "");
-                    params.putBoolean("isFinal", true);
+                    params.putString("value", "");
                     params.putString("error", "No speech recognized");
-                    sendEvent("SpeechRecognized", params);
+                    sendEvent("onSpeechError", params);
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Error handling recognized event", e);
             }
-        });
-        
-        // Fired during ongoing speech recognition, providing interim results
+        });// Fired during ongoing speech recognition, providing interim results
         recognizer.recognizing.addEventListener((object, recognitionEventArgs) -> {
             try {
                 String text = recognitionEventArgs.getResult().getText();
-                Log.d(TAG, "Interim recognition result: " + text);
-                
-                WritableMap params = Arguments.createMap();
-                params.putString("text", text);
-                params.putBoolean("isFinal", false);
-                sendEvent("SpeechRecognizing", params);
+                // Ensure we're not just getting a single character
+                if (text != null && !text.isEmpty()) {
+                    Log.d(TAG, "Interim recognition result: " + text);
+                    
+                    WritableMap params = Arguments.createMap();
+                    params.putString("value", text);
+                    params.putBoolean("isFinal", false);
+                    sendEvent("onSpeechPartialResults", params);
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Error handling recognizing event", e);
             }
@@ -163,8 +201,8 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
             try {
                 Log.d(TAG, "Speech recognition session started");
                 WritableMap params = Arguments.createMap();
-                params.putString("sessionId", sessionEventArgs.getSessionId());
-                sendEvent("SpeechSessionStarted", params);
+                params.putString("value", "Session started");
+                sendEvent("onSpeechStart", params);
             } catch (Exception e) {
                 Log.e(TAG, "Error handling session started event", e);
             }
@@ -175,16 +213,15 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
             try {
                 Log.d(TAG, "Speech recognition session stopped");
                 WritableMap params = Arguments.createMap();
-                params.putString("sessionId", sessionEventArgs.getSessionId());
-                sendEvent("SpeechSessionStopped", params);
+                params.putString("value", "Session stopped");
+                sendEvent("onSpeechEnd", params);
                 
                 isListening = false;
             } catch (Exception e) {
                 Log.e(TAG, "Error handling session stopped event", e);
             }
         });
-        
-        // Fired when an error or cancellation occurs
+          // Fired when an error or cancellation occurs
         recognizer.canceled.addEventListener((object, cancellationEventArgs) -> {
             try {
                 CancellationDetails details = CancellationDetails.fromResult(cancellationEventArgs.getResult());
@@ -193,11 +230,44 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
                 Log.e(TAG, "Speech recognition canceled: " + reason + ". Details: " + errorDetails);
                 
                 WritableMap params = Arguments.createMap();
-                params.putString("reason", reason);
-                params.putString("errorDetails", errorDetails);
-                sendEvent("SpeechCanceled", params);
+                
+                // Provide more detailed error information for debugging
+                if (details.getReason() == CancellationReason.Error) {
+                    Log.e(TAG, "Recognition error with code: " + details.getErrorCode() + ", details: " + errorDetails);
+                    params.putString("error", errorDetails);
+                    params.putInt("code", details.getErrorCode());
+                    params.putString("reason", "Error");
+                } else {
+                    // Handle non-error cancellations (e.g., user stopped)
+                    params.putString("error", "Recognition canceled: " + reason);
+                    params.putInt("code", details.getReason().ordinal());
+                    params.putString("reason", reason);
+                }
+                
+                sendEvent("onSpeechError", params);
                 
                 isListening = false;
+                
+                // If cancelled due to a recoverable error, try to restart recognition
+                if (details.getReason() == CancellationReason.Error && 
+                    details.getErrorCode() < 10) {  // Assuming codes < 10 are recoverable
+                    Log.d(TAG, "Attempting to restart recognition after recoverable error");
+                    try {
+                        // Delay restart by 1 second
+                        new android.os.Handler(reactContext.getMainLooper()).postDelayed(() -> {
+                            if (recognizer != null) {
+                                try {
+                                    recognizer.startContinuousRecognitionAsync();
+                                    isListening = true;
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Failed to auto-restart recognition", e);
+                                }
+                            }
+                        }, 1000);
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error while setting up auto-restart", e);
+                    }
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Error handling canceled event", e);
             }
@@ -205,7 +275,7 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void startContinuousRecognition(Promise promise) {
+    public void start(Promise promise) {
         if (!isInitialized) {
             Log.e(TAG, "Module not initialized");
             promise.reject("NOT_INITIALIZED", "Azure Continuous Speech not initialized");
@@ -221,34 +291,22 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
         try {
             Log.d(TAG, "Starting continuous recognition");
             
-            // Start the microphone recording
-            microphoneStream.startRecording();
-            
             // Start continuous recognition in a separate thread
             executorService.submit(() -> {
                 try {
                     recognizer.startContinuousRecognitionAsync().get();
                     isListening = true;
                     
-                    // Send success event to JavaScript
-                    WritableMap params = Arguments.createMap();
-                    params.putBoolean("success", true);
                     reactContext.runOnUiQueueThread(() -> {
-                        sendEvent("SpeechRecognitionStarted", params);
+                        promise.resolve("Started continuous recognition");
                     });
-                    
                 } catch (Exception e) {
                     Log.e(TAG, "Error starting continuous recognition", e);
-                    WritableMap params = Arguments.createMap();
-                    params.putBoolean("success", false);
-                    params.putString("error", e.getMessage());
                     reactContext.runOnUiQueueThread(() -> {
-                        sendEvent("SpeechRecognitionError", params);
+                        promise.reject("START_ERROR", "Error starting recognition: " + e.getMessage());
                     });
                 }
             });
-            
-            promise.resolve("Starting continuous recognition");
         } catch (Exception e) {
             Log.e(TAG, "Error starting continuous recognition", e);
             promise.reject("START_ERROR", "Error starting recognition: " + e.getMessage());
@@ -256,7 +314,7 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void stopContinuousRecognition(Promise promise) {
+    public void stop(Promise promise) {
         if (!isInitialized) {
             Log.e(TAG, "Module not initialized");
             promise.reject("NOT_INITIALIZED", "Azure Continuous Speech not initialized");
@@ -275,28 +333,18 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
             executorService.submit(() -> {
                 try {
                     recognizer.stopContinuousRecognitionAsync().get();
-                    microphoneStream.stopRecording();
                     isListening = false;
                     
-                    // Send success event to JavaScript
-                    WritableMap params = Arguments.createMap();
-                    params.putBoolean("success", true);
                     reactContext.runOnUiQueueThread(() -> {
-                        sendEvent("SpeechRecognitionStopped", params);
+                        promise.resolve("Stopped continuous recognition");
                     });
-                    
                 } catch (Exception e) {
                     Log.e(TAG, "Error stopping continuous recognition", e);
-                    WritableMap params = Arguments.createMap();
-                    params.putBoolean("success", false);
-                    params.putString("error", e.getMessage());
                     reactContext.runOnUiQueueThread(() -> {
-                        sendEvent("SpeechRecognitionError", params);
+                        promise.reject("STOP_ERROR", "Error stopping recognition: " + e.getMessage());
                     });
                 }
             });
-            
-            promise.resolve("Stopping continuous recognition");
         } catch (Exception e) {
             Log.e(TAG, "Error stopping continuous recognition", e);
             promise.reject("STOP_ERROR", "Error stopping recognition: " + e.getMessage());
@@ -304,7 +352,7 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void destroyRecognizer(Promise promise) {
+    public void destroy(Promise promise) {
         if (!isInitialized) {
             Log.d(TAG, "Module not initialized, nothing to destroy");
             promise.resolve("Not initialized");
@@ -318,7 +366,6 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
                 // Stop continuous recognition if it's running
                 try {
                     recognizer.stopContinuousRecognitionAsync().get();
-                    microphoneStream.stopRecording();
                     isListening = false;
                 } catch (Exception e) {
                     Log.e(TAG, "Error stopping recognition during cleanup", e);
