@@ -20,6 +20,32 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
+# macOS
+.DS_Store
+
+# Android/IntelliJ/Gradle
+*.iml
+.idea
+.gradle
+local.properties
+*.hprof
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# iOS
+ios/Pods/
+ios/build/
+
+# Custom modules build files
+custom-modules/**/build/
+custom-modules/**/outputs/
+custom-modules/**/intermediates/
+
+# Debug/Development
+debug.log
+
 # debug
 npm-debug.*
 yarn-debug.*

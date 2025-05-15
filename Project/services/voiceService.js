@@ -101,7 +101,6 @@ class VoiceService {
       return false;
     }
   }
-
   /**
    * Start speech recognition
    * @param {string} language - Language code for speech recognition (e.g., 'en-US')
@@ -110,7 +109,6 @@ class VoiceService {
   async start(language = 'en-US') {
     // Prevent multiple starts
     if (this.isListening) {
-      console.log('Speech recognition already active');
       return;
     }
 
@@ -122,7 +120,6 @@ class VoiceService {
 
       // For Android, prioritize the custom module
       if (Platform.OS === 'android' && this.androidModule) {
-        console.log('Starting Android continuous speech recognition');
         await this.androidModule.start();
         this.isListening = true;
         
@@ -133,7 +130,6 @@ class VoiceService {
       }
 
       // For other platforms or if Android module fails
-      console.log('Starting fallback speech recognition');
       this._startFallbackRecognition(language);
     } catch (error) {
       console.error('Error starting speech recognition:', error);
@@ -146,21 +142,18 @@ class VoiceService {
       throw error;
     }
   }
-
   /**
    * Stop speech recognition
    * @returns {Promise<void>}
    */
   async stop() {
     if (!this.isListening) {
-      console.log('Speech recognition not active');
       return;
     }
 
     try {
       // For Android, use the custom module if available
       if (Platform.OS === 'android' && this.androidModule) {
-        console.log('Stopping Android continuous speech recognition');
         await this.androidModule.stop();
       } 
       // Fallback for other platforms
@@ -180,8 +173,7 @@ class VoiceService {
    * @private
    */
   async initialize(language = 'en-US') {
-    try {
-      // For Android, try the custom module first
+    try {      // For Android, try the custom module first
       if (Platform.OS === 'android') {
         const androidInitialized = await this._initializeAndroidModule();
         if (androidInitialized) {
@@ -191,7 +183,6 @@ class VoiceService {
       }
 
       // Fallback to web implementation or other fallbacks
-      console.log('Initializing fallback speech recognition...');
       await this._initializeFallbackRecognition(language);
       this.isInitialized = true;
     } catch (error) {

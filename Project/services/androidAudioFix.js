@@ -7,8 +7,8 @@ import { Platform, NativeModules, PermissionsAndroid } from 'react-native';
 
 // Create a minimal logger for critical errors only
 const log = {
-  debug: (message) => console.debug(`[AndroidAudio] ${message}`),
-  info: (message) => console.info(`[AndroidAudio] ${message}`),
+  debug: () => {},
+  info: () => {},
   error: (message) => console.error(`[AndroidAudio] ERROR: ${message}`),
   warn: (message) => console.warn(`[AndroidAudio] WARN: ${message}`)
 };

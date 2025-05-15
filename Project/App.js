@@ -4,16 +4,11 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { LogBox, View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet, Alert, ScrollView } from 'react-native';
 import { Camera } from 'expo-camera';
 
-// Helper functions for logging
-const logInfo = (message) => {
-  // Info logs removed
-};
-
 // Components
 import CameraView from './components/camera/CameraView';
 import CaptureButton from './components/camera/CaptureButton';
 import CardGroup from './components/cards/CardGroup';
-import CardStack from './components/cards/CardStack'; // Add this import
+import CardStack from './components/cards/CardStack';
 import ExpandedCard from './components/cards/ExpandedCard';
 import ErrorView from './components/ui/ErrorView';
 import { LoadingPermissionView, MediaPermissionView, DeniedPermissionView } from './components/ui/PermissionViews';
@@ -40,9 +35,6 @@ import { PRIORITY } from './services/analysisQueue';
 // Styles and constants
 import { styles } from './styles';
 import { isWeb } from './constants';
-
-// Ignore specific warnings that might be coming from Expo Camera
-LogBox.ignoreLogs(['ViewPropTypes']);
 
 export default function App() {
   // State for device dimensions
@@ -82,8 +74,6 @@ export default function App() {
 
   // Handle an incoming image and update pending analysis count
   const handleNewImage = useCallback((image) => {
-    console.log(`[handleNewImage] Called with image: ${image.uri.substring(0, 30)}...`);
-    
     // Add to captures
     addCapture(image);
     
@@ -136,7 +126,6 @@ export default function App() {
   const processVoiceCapture = useCallback(async (text) => {
     // Don't proceed if camera isn't ready
     if (!cameraRef.current) {
-      logInfo('Camera not ready, cannot capture');
       return;
     }
     
@@ -167,8 +156,6 @@ export default function App() {
         timestamp: captureTimestamp
       };
       
-      logInfo(`Capturing photo with prompt: "${text}"`);
-      
       // Add to captures using our handler
       handleNewImage(capture);
       
@@ -177,12 +164,9 @@ export default function App() {
       
       // Handle immediate analysis if enabled, but don't block the UI
       if (currentIsImmediateAnalysisActive) {
-        console.log('[handleVoiceCapturePhoto] Voice-prompted immediate analysis is active');
         // Use a non-blocking approach for analysis to prevent freezing image capture
         setTimeout(async () => {
           try {
-            console.log(`[handleVoiceCapturePhoto] Starting voice-prompted analysis for: ${capture.uri.substring(0, 30)}...`);
-            
             // Mark this image as sent for analysis
             setImagesSentForAnalysis(prevSent => {
               const newSent = new Set(prevSent);
@@ -190,10 +174,8 @@ export default function App() {
               return newSent;
             });
             
-            console.log('[handleVoiceCapturePhoto] Calling analyzeImages with PRIORITY.HIGH');
             // Voice-prompted analyses get highest priority
             await analyzeImages([capture], PRIORITY.HIGH);
-            console.log('[handleVoiceCapturePhoto] Voice-prompted analysis completed');
           } catch (err) {
             console.error('Analysis error:', err);
           }
@@ -202,7 +184,7 @@ export default function App() {
     } catch (err) {
       console.error('Error during direct camera capture:', err);
       // Log more detailed error info
-      if (err.message) logInfo(`Capture error: ${err.message}`);
+      if (err.message) console.error(`Capture error: ${err.message}`);
     } finally {
       // Reset capture state immediately, not waiting for analysis to complete
       setIsVoiceCapturing(false);
@@ -212,7 +194,6 @@ export default function App() {
       // Allow new captures sooner
       setTimeout(() => {
         setCaptureDisabled(false);
-        logInfo('Re-enabling capture button');
       }, 1200); // Increased to 1.2 seconds to prevent rapid captures
       
       // IMPORTANT: Don't turn off voice recognition after a capture
@@ -250,11 +231,8 @@ export default function App() {
       
       // Handle immediate analysis
       if (isImmediateAnalysisActive) {
-        console.log('[handleCapturePress] Immediate analysis is active, will analyze after capture');
         // Begin analysis in a non-blocking way
         setTimeout(async () => {
-          console.log(`[handleCapturePress] Starting immediate analysis for: ${photoWithPrompt.uri.substring(0, 30)}...`);
-          
           // Mark this image as sent for analysis
           setImagesSentForAnalysis(prevSent => {
             const newSent = new Set(prevSent);
@@ -262,10 +240,8 @@ export default function App() {
             return newSent;
           });
           
-          console.log('[handleCapturePress] Calling analyzeImages with PRIORITY.HIGH');
           // Use PRIORITY.HIGH for immediate analysis
           await analyzeImages([photoWithPrompt], PRIORITY.HIGH);
-          console.log('[handleCapturePress] Immediate analysis completed');
         }, 50); // Small delay to ensure UI responsiveness
       }
       
@@ -284,9 +260,7 @@ export default function App() {
 
   // Function to handle image analysis
   const handleAnalyzeImages = async () => {
-    console.log(`[handleAnalyzeImages] Called with ${captures.length} captures`);
-    
-    // IMPORTANT: Make a stable copy of captures to prevent race conditions
+    // Make a copy of the current captures to avoid race conditions
     const capturesCopy = [...captures];
     
     // Get unanalyzed images that haven't been sent for analysis
@@ -294,10 +268,7 @@ export default function App() {
       img => !img.analyzed && !imagesSentForAnalysis.has(img.uri)
     );
     
-    console.log(`[handleAnalyzeImages] Found ${unanalyzedImages.length} unanalyzed images to send for analysis`);
-    
     if (unanalyzedImages.length === 0) {
-      console.log('[handleAnalyzeImages] No unanalyzed images, returning early');
       return;
     }
     
@@ -311,10 +282,8 @@ export default function App() {
     setIsAnalyzing(true);
     
     try {
-      console.log('[handleAnalyzeImages] Calling analyzeImages with PRIORITY.NORMAL');
       // Pass the STABLE copy of captures to avoid state changes during analysis
       await analyzeImages(capturesCopy, PRIORITY.NORMAL);
-      console.log('[handleAnalyzeImages] analyzeImages completed');
     } catch (error) {
       console.error('Analysis error:', error);
       setCameraError(new Error('Failed to analyze images: ' + error.message));
@@ -338,15 +307,10 @@ export default function App() {
     
     // Only capture photo when we have a finalized result
     if (isFinalized) {
-      logInfo(`Processing finalized speech: "${text}"`);
-      
       // Check if capture is in progress
       if (captureDisabled) {
-        logInfo('Capture already in progress, queuing this capture request');
-        
         // Queue this capture for processing after current one completes
         setTimeout(() => {
-          logInfo(`Processing queued capture for: "${text}"`);
           processVoiceCapture(text);
         }, 1500); // Wait 1.5 seconds before trying to process the queued capture
         return;
@@ -417,22 +381,10 @@ export default function App() {
   useEffect(() => {
     registerAnalysisEventHandlers({
       onAnalysisStart: (count) => {
-        console.log(`[onAnalysisStart] Starting analysis of ${count} images`);
         setIsAnalyzing(true);
-        
-        // Log current capture counts for debugging the missing images issue
-        console.log(`[DEBUG] Begin analysis - Total images: ${captures.length}, Unanalyzed: ${captures.filter(img => !img.analyzed).length}`);
       },
       onAnalysisComplete: (updatedImages, failedAnalyses = []) => {
-        console.log(`[onAnalysisComplete] Analysis complete. ${updatedImages.length} images processed, ${failedAnalyses.length} failed.`);
-        
-        // DEBUG: Log detailed image counts before update
-        const beforeAnalyzedCount = captures.filter(img => img.analyzed).length;
-        const beforeUnanalyzedCount = captures.filter(img => !img.analyzed).length;
-        const beforeTotalCount = captures.length;
-        console.log(`[DEBUG] BEFORE update - Total: ${beforeTotalCount}, Analyzed: ${beforeAnalyzedCount}, Unanalyzed: ${beforeUnanalyzedCount}`);
-        
-        // CRITICAL FIX: Create a copy of the current captures to avoid reference issues
+        // Create a copy of the current captures to avoid reference issues
         const capturesCopy = [...captures];
         
         // Only update images that exist in our capturesCopy
@@ -440,33 +392,16 @@ export default function App() {
           const existingIndex = capturesCopy.findIndex(img => img.uri === updatedImage.uri);
           if (existingIndex !== -1) {
             capturesCopy[existingIndex] = { ...updatedImage };
-          } else {
-            console.warn(`[DEBUG] Skipping update for image not in captures: ${updatedImage.uri.substring(0, 20)}...`);
           }
         }
         
         // Set the entire array at once to avoid partial updates
         updateCaptures(capturesCopy);
         
-        // DEBUG: Log after counts
-        const afterAnalyzedCount = capturesCopy.filter(img => img.analyzed).length;
-        const afterUnanalyzedCount = capturesCopy.filter(img => !img.analyzed).length;
-        console.log(`[DEBUG] AFTER update - Total: ${capturesCopy.length}, Analyzed: ${afterAnalyzedCount}, Unanalyzed: ${afterUnanalyzedCount}`);
-        
-        // Check for any discrepancy
-        if (beforeTotalCount !== capturesCopy.length) {
-          console.error(`[DEBUG] IMAGE COUNT MISMATCH! Before: ${beforeTotalCount}, After: ${capturesCopy.length}`);
-          console.log('[DEBUG] Images that may be missing:', 
-            captures.filter(c => !capturesCopy.some(i => i.uri === c.uri)).map(img => img.uri.substring(0, 20))
-          );
-        }
-        
         setIsAnalyzing(false);
         
         // Handle failed analyses properly
         if (failedAnalyses.length > 0) {
-          console.log(`[onAnalysisComplete] Handling ${failedAnalyses.length} failed analyses`);
-          
           setImagesSentForAnalysis(prev => {
             const newSet = new Set(prev);
             // Remove failed analyses from sent set so they can be retried
@@ -479,9 +414,7 @@ export default function App() {
         }
       },
       onImageAnalyzed: (image) => {
-        console.log(`[onImageAnalyzed] Single image analyzed: ${image.uri.substring(0, 30)}...`);
-        
-        // CRITICAL FIX: Update a single image by modifying the state with a function
+        // Update a single image by modifying the state with a function
         // This ensures we always have the latest state to work with
         updateCaptures(prevCaptures => {
           // Create a fresh copy to avoid reference issues
@@ -490,9 +423,6 @@ export default function App() {
           
           if (index !== -1) {
             capturesCopy[index] = { ...image };
-          } else {
-            console.warn(`[onImageAnalyzed] Image not found in captures: ${image.uri.substring(0, 20)}...`);
-            // Don't add new images that don't exist in the captures array
           }
           
           return capturesCopy;
@@ -510,9 +440,7 @@ export default function App() {
         
         // If we have a specific image that failed
         if (failedImage) {
-          console.log(`[onError] Image failed analysis: ${failedImage.uri.substring(0, 30)}...`);
-          
-          // CRITICAL FIX: Update with functional form to get latest state
+          // Update with functional form to get latest state
           updateCaptures(prevCaptures => {
             const capturesCopy = [...prevCaptures];
             const index = capturesCopy.findIndex(img => img.uri === failedImage.uri);
@@ -523,8 +451,6 @@ export default function App() {
                 analysisFailed: true, 
                 analyzed: false 
               };
-            } else {
-              console.warn(`[onError] Failed image not found in captures: ${failedImage.uri.substring(0, 20)}...`);
             }
             
             return capturesCopy;
@@ -566,7 +492,6 @@ export default function App() {
         const timeSinceLastActivity = Date.now() - lastVoiceActivityRef.current;
         
         if (timeSinceLastActivity > 20000 && voiceRetryCount < maxVoiceRetries) { // 20 seconds
-          logInfo('Voice recognition appears stuck, attempting automatic restart');
           setVoiceRetryCount(prev => prev + 1);
           
           // Toggle off and on to restart
@@ -578,7 +503,6 @@ export default function App() {
           }, 1000);
         } else if (voiceRetryCount >= maxVoiceRetries) {
           // Too many retries, just turn it off
-          logInfo('Maximum voice retry attempts reached, disabling voice recognition');
           setIsVoiceActive(false);
           setVoiceRetryCount(0);
         } else {
@@ -625,8 +549,6 @@ export default function App() {
   
   // Function to handle voice recognition errors
   const handleVoiceError = useCallback((error) => {
-    logInfo(`Voice recognition error: ${error.message || 'Unknown error'}`);
-    
     // Increment error count
     setVoiceErrorCount(prev => {
       const newCount = prev + 1;
@@ -672,7 +594,6 @@ export default function App() {
       // If we're not analyzing, calculate unanalyzed count
       const pendingCount = captures.filter(img => !img.analyzed).length;
       setPendingAnalysisCount(pendingCount);
-      console.log(`[useEffect] Updated pendingAnalysisCount to ${pendingCount}`);
     }
   }, [captures, isAnalyzing]);
 
