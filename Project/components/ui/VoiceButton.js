@@ -6,11 +6,11 @@ import { testMicrophone, fixAndroidAudioIssues } from '../../services/androidAud
 
 // Simple console logger - reduced logging
 const logDebug = (message) => {
-  if (__DEV__ && false) console.debug(`[VoiceButton] ${message}`); // Disabled by default
+  // Debug logs removed
 };
 
 const logInfo = (message) => {
-  if (__DEV__ && false) console.info(`[VoiceButton] ${message}`); // Disabled by default
+  // Info logs removed
 };
 
 const logError = (message) => {
@@ -18,11 +18,11 @@ const logError = (message) => {
 };
 
 const logWarn = (message) => {
-  if (__DEV__) console.warn(`[VoiceButton] WARN: ${message}`);
+  // Warning logs reduced to critical errors only
 };
 
 const logEvent = (event) => {
-  if (__DEV__ && false) console.info(`[VoiceButton] Event: ${event}`); // Disabled by default
+  // Event logs removed
 };
 
 const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = false, onError = null }) => {
@@ -396,9 +396,8 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     if (isActive) {
       return styles.active.backgroundColor;
     }
-    
-    // When inactive, ensure it's white
-    return '#FFFFFF';
+      // When inactive, use the same color as the inactive ImmediateAnalysisButton
+    return '#f0f0f0';
   };
     // Test microphone functionality
   const handleLongPress = async () => {
@@ -802,48 +801,54 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     statusColor = '#5bc0de'; // Info for enabled but not listening
     micIconName = 'mic-outline';
   }
-  
   return (
-    <TouchableOpacity
-      style={[
-        styles.button,
-        inCooldown && styles.cooldown,
-        isActive && !isListening && !isPaused && styles.active,
-        isListening && styles.listening,
-        isPaused && styles.paused,
-        { backgroundColor: getBackgroundColor() }
-      ]}
-      onPress={toggleVoiceRecognition}
-      onLongPress={handleLongPress}
-      delayLongPress={1000}
-      activeOpacity={0.7}
-    >
-      {isTesting ? (
-        <ActivityIndicator color="#ffffff" size="small" />
-      ) : (
-        <Ionicons name={micIconName} size={24} color="white" />
-      )}
-    </TouchableOpacity>
+    <View style={styles.wrapper}>
+      <TouchableOpacity
+        style={[
+          styles.button,
+          inCooldown && styles.cooldown,
+          isActive && !isListening && !isPaused && styles.active,
+          isListening && styles.listening,
+          isPaused && styles.paused,
+          !isActive && styles.inactive
+        ]}
+        onPress={toggleVoiceRecognition}
+        onLongPress={handleLongPress}
+        delayLongPress={1000}
+        activeOpacity={0.7}
+      >
+        {isTesting ? (
+          <ActivityIndicator color={isActive ? "#ffffff" : "#999"} size="small" />
+        ) : (
+          <Ionicons name={micIconName} size={24} color={isActive ? "white" : "#999"} />
+        )}
+      </TouchableOpacity>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
   button: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 6,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  inactive: {
+    backgroundColor: '#f0f0f0',
   },
   active: {
     backgroundColor: 'rgba(52, 152, 219, 0.9)',

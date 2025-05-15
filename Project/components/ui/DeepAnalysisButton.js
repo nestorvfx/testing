@@ -2,10 +2,14 @@ import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, Dimensions, View, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const DeepAnalysisButton = ({ onPress, isAnalyzing, hasDeepAnalysis }) => {
+const DeepAnalysisButton = ({ onPress, isAnalyzing, hasDeepAnalysis, analyzedCount, totalCount }) => {
   // Get screen width to determine button layout
   const screenWidth = Dimensions.get('window').width;
   const isSmallScreen = screenWidth < 400;
+  
+  // Calculate progress for the button label
+  const progressText = totalCount > 0 ? `${analyzedCount}/${totalCount}` : '';
+  const showProgress = totalCount > 0 && analyzedCount > 0;
   
   return (
     <TouchableOpacity
@@ -20,9 +24,9 @@ const DeepAnalysisButton = ({ onPress, isAnalyzing, hasDeepAnalysis }) => {
       // Add hitSlop to increase touch area, especially important for Android
       hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
       activeOpacity={0.7}
-      disabled={isAnalyzing}
+      disabled={isAnalyzing && !hasDeepAnalysis}
     >
-      {isAnalyzing ? (
+      {isAnalyzing && !hasDeepAnalysis ? (
         <ActivityIndicator color="#fff" size="small" />
       ) : (
         <>
@@ -39,12 +43,14 @@ const DeepAnalysisButton = ({ onPress, isAnalyzing, hasDeepAnalysis }) => {
               </Text>
               <Text style={[styles.text, styles.smallText]}>
                 {hasDeepAnalysis ? "Analysis" : "Analysis"}
+                {showProgress && ` ${progressText}`}
               </Text>
             </View>
           ) : (
             // Single line for larger screens
             <Text style={styles.text}>
               {hasDeepAnalysis ? "View Analysis" : "Deep Analysis"}
+              {showProgress && ` (${progressText})`}
             </Text>
           )}
         </>

@@ -14,6 +14,7 @@ import {
   useWindowDimensions  // Add this import
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AnalysisConnectionView from './AnalysisConnectionView';
 
 // Remove the static dimensions - these won't update on rotation
 // const { width, height } = Dimensions.get('window');
@@ -121,12 +122,17 @@ const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {
               ))}
             </View>
           )}
-          
-          <View style={styles.metadataContainer}>
+            <View style={styles.metadataContainer}>
             <Text style={styles.metadataText}>
               Analysis based on {analysis.imageCount || 'multiple'} {analysis.imageCount === 1 ? 'image' : 'images'}
             </Text>
           </View>
+          
+          {/* Show the images that are part of this analysis */}
+          <AnalysisConnectionView
+            images={analysis.images}
+            customPrompt={analysis.customPrompt}
+          />
         </View>
       )}
     </View>

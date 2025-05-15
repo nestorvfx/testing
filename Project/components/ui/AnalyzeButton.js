@@ -2,38 +2,44 @@ import React from 'react';
 import { TouchableOpacity, Text, View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const AnalyzeButton = ({ onPress, isAnalyzing, unanalyzedCount }) => {
+const AnalyzeButton = ({ onPress, isAnalyzing, unanalyzedCount, pendingAnalysisCount }) => {
+  // pendingAnalysisCount is the count of images that haven't been sent to analysis yet
+  // unanalyzedCount includes both images in analysis queue and pending ones
   return (
-    <TouchableOpacity
-      style={styles.container}
-      onPress={onPress}
-      disabled={isAnalyzing || unanalyzedCount === 0}
-    >
-      <View style={[
-        styles.button,
-        { opacity: (unanalyzedCount === 0 && !isAnalyzing) ? 0.6 : 1 }
-      ]}>
-        {isAnalyzing ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <Ionicons name="search" size={22} color="#fff" />
-        )}
-        <Text style={styles.text}>
-          {isAnalyzing 
-            ? "Analyzing..." 
-            : unanalyzedCount > 0 
-              ? `Analyze (${unanalyzedCount})` 
-              : "All Analyzed"
-          }
-        </Text>
-      </View>
-      
-      {unanalyzedCount > 0 && !isAnalyzing && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{unanalyzedCount}</Text>
+    <View style={styles.container}>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={pendingAnalysisCount === 0} // Only disable if nothing to analyze
+        activeOpacity={0.8}
+        style={{ zIndex: 150 }}
+      >
+        <View style={[
+          styles.button,
+          { opacity: pendingAnalysisCount === 0 ? 0.6 : 1 }
+        ]}>
+          {isAnalyzing ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Ionicons name="search" size={22} color="#fff" />
+          )}
+          <Text style={styles.text}>
+            {isAnalyzing 
+              ? "Analyzing..."
+              : pendingAnalysisCount > 0 
+                ? `Analyze (${pendingAnalysisCount})` 
+                : "All Analyzed"
+            }
+          </Text>
         </View>
-      )}
-    </TouchableOpacity>
+        
+        {/* Only show badge when there are pending analyses and not currently analyzing */}
+        {pendingAnalysisCount > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{pendingAnalysisCount}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -55,7 +61,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 2,
-    elevation: 3,
+    elevation: 5,
   },
   text: {
     color: '#fff',
