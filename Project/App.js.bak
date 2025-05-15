@@ -132,94 +132,6 @@ export default function App() {
   // Track photo URIs across operations
   const captureUriMapRef = useRef(new Map());
   
-  // Define processVoiceCapture first, before it's used in handleSpeechResult
-  const processVoiceCapture = useCallback(async (text) => {
-    // Don't proceed if camera isn't ready
-    if (!cameraRef.current) {
-      logInfo('Camera not ready, cannot capture');
-      return;
-    }
-    
-    // isAnalyzing should NOT block voice capture
-    setIsVoiceCapturing(true);
-    
-    // Disable capture to prevent multiple triggers
-    setCaptureDisabled(true);
-    
-    // Store timestamp to help identify duplicate captures
-    const captureTimestamp = Date.now();
-    
-    try {
-      // Take the photo directly
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
-        skipProcessing: Platform.OS === 'android'
-      });
-      
-      if (!photo) {
-        throw new Error('Failed to capture photo');
-      }
-      
-      // Create capture with prompt
-      const capture = {
-        ...photo,
-        customPrompt: text,
-        timestamp: captureTimestamp
-      };
-      
-      logInfo(`Capturing photo with prompt: "${text}"`);
-      
-      // Add to captures using our handler
-      handleNewImage(capture);
-      
-      // Use ref value instead of closure value to get latest state
-      const currentIsImmediateAnalysisActive = isImmediateAnalysisActiveRef.current;
-      
-      // Handle immediate analysis if enabled, but don't block the UI
-      if (currentIsImmediateAnalysisActive) {
-        console.log('[handleVoiceCapturePhoto] Voice-prompted immediate analysis is active');
-        // Use a non-blocking approach for analysis to prevent freezing image capture
-        setTimeout(async () => {
-          try {
-            console.log(`[handleVoiceCapturePhoto] Starting voice-prompted analysis for: ${capture.uri.substring(0, 30)}...`);
-            
-            // Mark this image as sent for analysis
-            setImagesSentForAnalysis(prevSent => {
-              const newSent = new Set(prevSent);
-              newSent.add(capture.uri);
-              return newSent;
-            });
-            
-            console.log('[handleVoiceCapturePhoto] Calling analyzeImages with PRIORITY.HIGH');
-            // Voice-prompted analyses get highest priority
-            await analyzeImages([capture], PRIORITY.HIGH);
-            console.log('[handleVoiceCapturePhoto] Voice-prompted analysis completed');
-          } catch (err) {
-            console.error('Analysis error:', err);
-          }
-        }, 100);
-      }
-    } catch (err) {
-      console.error('Error during direct camera capture:', err);
-      // Log more detailed error info
-      if (err.message) logInfo(`Capture error: ${err.message}`);
-    } finally {
-      // Reset capture state immediately, not waiting for analysis to complete
-      setIsVoiceCapturing(false);
-      setSpokenPrompt('');
-      setSpeechVolume(0);
-      
-      // Allow new captures sooner
-      setTimeout(() => {
-        setCaptureDisabled(false);
-        logInfo('Re-enabling capture button');
-      }, 1200); // Increased to 1.2 seconds to prevent rapid captures
-      
-      // IMPORTANT: Don't turn off voice recognition after a capture
-      // This allows the system to continue listening for more prompts
-    }
-  }, [cameraRef, handleNewImage, analyzeImages, setPendingAnalysisCount]);
-  
   // Ensure camera is ready before capturing
   const handleCapturePhoto = useCallback(async (customPrompt = '') => {
     if (!cameraReady || captureDisabled) {
@@ -330,7 +242,96 @@ export default function App() {
     }
   };
 
-  // Handle speech recognition result - now defined after processVoiceCapture
+  // Separate function for voice capture processing to avoid code duplication
+  const processVoiceCapture = useCallback(async (text) => {
+    // Don't proceed if camera isn't ready
+    if (!cameraRef.current) {
+      logInfo('Camera not ready, cannot capture');
+      return;
+    }
+    
+    // isAnalyzing should NOT block voice capture
+    setIsVoiceCapturing(true);
+    
+    // Disable capture to prevent multiple triggers
+    setCaptureDisabled(true);
+    
+    // Store timestamp to help identify duplicate captures
+    const captureTimestamp = Date.now();
+    
+    try {
+      // Take the photo directly
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+        skipProcessing: Platform.OS === 'android'
+      });
+      
+      if (!photo) {
+        throw new Error('Failed to capture photo');
+      }
+      
+      // Create capture with prompt
+      const capture = {
+        ...photo,
+        customPrompt: text,
+        timestamp: captureTimestamp
+      };
+      
+      logInfo(`Capturing photo with prompt: "${text}"`);
+      
+      // Add to captures using our handler
+      handleNewImage(capture);
+      
+      // Use ref value instead of closure value to get latest state
+      const currentIsImmediateAnalysisActive = isImmediateAnalysisActiveRef.current;
+      
+      // Handle immediate analysis if enabled, but don't block the UI
+      if (currentIsImmediateAnalysisActive) {
+        console.log('[handleVoiceCapturePhoto] Voice-prompted immediate analysis is active');
+        // Use a non-blocking approach for analysis to prevent freezing image capture
+        setTimeout(async () => {
+          try {
+            console.log(`[handleVoiceCapturePhoto] Starting voice-prompted analysis for: ${capture.uri.substring(0, 30)}...`);
+            
+            // Mark this image as sent for analysis
+            setImagesSentForAnalysis(prevSent => {
+              const newSent = new Set(prevSent);
+              newSent.add(capture.uri);
+              return newSent;
+            });
+            
+            console.log('[handleVoiceCapturePhoto] Calling analyzeImages with PRIORITY.HIGH');
+            // Voice-prompted analyses get highest priority
+            await analyzeImages([capture], PRIORITY.HIGH);
+            console.log('[handleVoiceCapturePhoto] Voice-prompted analysis completed');
+          } catch (err) {
+            console.error('Analysis error:', err);
+          }
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error during direct camera capture:', err);
+      // Log more detailed error info
+      if (err.message) logInfo(`Capture error: ${err.message}`);
+    } finally {
+      // Reset capture state immediately, not waiting for analysis to complete
+      setIsVoiceCapturing(false);
+      setSpokenPrompt('');
+      setSpeechVolume(0);
+      
+      // Allow new captures sooner
+      setTimeout(() => {
+        setCaptureDisabled(false);
+        logInfo('Re-enabling capture button');
+      }, 1200); // Increased to 1.2 seconds to prevent rapid captures
+      
+      // IMPORTANT: Don't turn off voice recognition after a capture
+      // This allows the system to continue listening for more prompts
+    }
+  }, [cameraRef, handleNewImage, analyzeImages, setImagesSentForAnalysis, setIsVoiceCapturing, 
+      setSpokenPrompt, setSpeechVolume, setCaptureDisabled]);
+
+  // Handle speech recognition result
   const handleSpeechResult = useCallback((text, isFinalized, volume = 0) => {
     // Always update UI with speech for visual feedback
     setSpokenPrompt(text);
@@ -355,8 +356,88 @@ export default function App() {
       // Process the capture immediately if not disabled
       processVoiceCapture(text);
     }
-  }, [processVoiceCapture, captureDisabled]); // Now correctly depends on processVoiceCapture
-  
+  }, [spokenPrompt, captureDisabled]);
+    
+    // isAnalyzing should NOT block voice capture
+    setIsVoiceCapturing(true);
+    
+    // Disable capture to prevent multiple triggers
+    setCaptureDisabled(true);
+    
+    // Store timestamp to help identify duplicate captures
+    const captureTimestamp = Date.now();
+    
+    try {
+      // Take the photo directly
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+        skipProcessing: Platform.OS === 'android'
+      });
+      
+      if (!photo) {
+        throw new Error('Failed to capture photo');
+      }
+      
+      // Create capture with prompt
+      const capture = {
+        ...photo,
+        customPrompt: text,
+        timestamp: captureTimestamp
+      };
+      
+      logInfo(`Capturing photo with prompt: "${text}"`);
+      
+      // Add to captures using our handler
+      handleNewImage(capture);
+      
+      // Use ref value instead of closure value to get latest state
+      const currentIsImmediateAnalysisActive = isImmediateAnalysisActiveRef.current;
+      
+      // Handle immediate analysis if enabled, but don't block the UI
+      if (currentIsImmediateAnalysisActive) {
+        console.log('[handleVoiceCapturePhoto] Voice-prompted immediate analysis is active');
+        // Use a non-blocking approach for analysis to prevent freezing image capture
+        setTimeout(async () => {
+          try {
+            console.log(`[handleVoiceCapturePhoto] Starting voice-prompted analysis for: ${capture.uri.substring(0, 30)}...`);
+            
+            // Mark this image as sent for analysis
+            setImagesSentForAnalysis(prevSent => {
+              const newSent = new Set(prevSent);
+              newSent.add(capture.uri);
+              return newSent;
+            });
+            
+            console.log('[handleVoiceCapturePhoto] Calling analyzeImages with PRIORITY.HIGH');
+            // Voice-prompted analyses get highest priority
+            await analyzeImages([capture], PRIORITY.HIGH);
+            console.log('[handleVoiceCapturePhoto] Voice-prompted analysis completed');
+          } catch (err) {
+            console.error('Analysis error:', err);
+          }
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error during direct camera capture:', err);
+      // Log more detailed error info
+      if (err.message) logInfo(`Capture error: ${err.message}`);
+    } finally {
+      // Reset capture state immediately, not waiting for analysis to complete
+      setIsVoiceCapturing(false);
+      setSpokenPrompt('');
+      setSpeechVolume(0);
+      
+      // Allow new captures sooner
+      setTimeout(() => {
+        setCaptureDisabled(false);
+        logInfo('Re-enabling capture button');
+      }, 1200); // Increased to 1.2 seconds to prevent rapid captures
+      
+      // IMPORTANT: Don't turn off voice recognition after a capture
+      // This allows the system to continue listening for more prompts
+    }
+  }, [cameraRef, handleNewImage, analyzeImages]);
+
   // Deep analysis states
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
   const [deepAnalyses, setDeepAnalyses] = useState([]);
@@ -707,6 +788,13 @@ export default function App() {
         volume={speechVolume} // Use the speech volume state
       />
       
+      {/* Analysis indicator (subtle) */}
+      {isAnalyzing && (
+        <View style={customStyles.analysisIndicator}>
+          <Text style={customStyles.analysisText}>Analyzing...</Text>
+        </View>
+      )}
+      
       {/* Top control bar for voice and immediate analysis buttons */}
       <View style={customStyles.topControlBar}>
         <View style={customStyles.buttonGroup}>
@@ -847,6 +935,21 @@ const customStyles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 3,
     elevation: 6, // Higher elevation to prevent it from appearing behind other elements
+  },
+  analysisIndicator: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    zIndex: 150,
+  },
+  analysisText: {
+    color: '#444',
+    fontSize: 14,
+    fontWeight: '500',
   },
   recordingIndicator: {
     position: 'absolute', 
