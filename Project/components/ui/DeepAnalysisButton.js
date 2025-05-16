@@ -43,14 +43,12 @@ const DeepAnalysisButton = ({ onPress, isAnalyzing, hasDeepAnalysis, analyzedCou
               </Text>
               <Text style={[styles.text, styles.smallText]}>
                 {hasDeepAnalysis ? "Analysis" : "Analysis"}
-                {showProgress && ` ${progressText}`}
               </Text>
             </View>
           ) : (
             // Single line for larger screens
             <Text style={styles.text}>
               {hasDeepAnalysis ? "View Analysis" : "Deep Analysis"}
-              {showProgress && ` (${progressText})`}
             </Text>
           )}
         </>

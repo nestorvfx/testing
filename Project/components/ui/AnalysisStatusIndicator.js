@@ -21,9 +21,7 @@ const AnalysisStatusIndicator = ({ analyzedCount, totalCount, analysisInProgress
         />
       </View>
       <Text style={styles.statusText}>
-        {analysisInProgress 
-          ? `Analyzing... ${analyzedCount}/${totalCount}` 
-          : `${analyzedCount}/${totalCount} analyzed`}
+        `Analyzed ${analyzedCount}/${totalCount}`
       </Text>
     </View>
   );
