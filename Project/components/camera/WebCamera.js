@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { View } from 'react-native';
 
-const WebCamera = forwardRef(({ children, style, onCameraReady }, ref) => {
+const WebCamera = forwardRef(({ style, onCameraReady }, ref) => {
   const videoRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
@@ -74,21 +74,20 @@ const WebCamera = forwardRef(({ children, style, onCameraReady }, ref) => {
     };
   }, []);
 
+  // Return just the video element without children
   return (
-    <View style={style}>
-      <video 
-        ref={videoRef} 
-        style={{ 
-          width: '100%', 
-          height: '100%', 
-          objectFit: 'cover' 
-        }} 
-        autoPlay 
-        playsInline
-        muted
-      />
-      {children}
-    </View>
+    <video 
+      ref={videoRef} 
+      style={{ 
+        ...style,
+        width: '100%', 
+        height: '100%', 
+        objectFit: 'cover' 
+      }} 
+      autoPlay 
+      playsInline
+      muted
+    />
   );
 });
 

@@ -62,9 +62,22 @@ const CameraView = ({
     const CameraComponent = isWeb ? WebCamera : ExpoCameraView;
 
     return (
-      <CameraComponent {...cameraProps}>
-        <View style={[styles.overlay, { transform: [{ scaleX: -1 }] }]}>
-          
+      <View style={styles.container}>
+        {/* Render the camera without children */}
+        <CameraComponent {...cameraProps} />
+        
+        {/* Render overlay as a sibling with absolute positioning */}
+        <View style={[
+          styles.overlay, 
+          { 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            transform: [{ scaleX: -1 }]
+          }
+        ]}>
           {!cameraReady && Platform.OS !== 'android' && (
             <View style={styles.initializing}>
               <Text style={styles.initializingText}>Initializing camera...</Text>
@@ -72,7 +85,7 @@ const CameraView = ({
           )}
         </View>
         <StatusBar style="auto" />
-      </CameraComponent>
+      </View>
     );
   } catch (error) {
     console.error('Error rendering camera:', error);

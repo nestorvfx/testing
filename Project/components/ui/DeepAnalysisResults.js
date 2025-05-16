@@ -11,18 +11,17 @@ import {
   LayoutAnimation,
   UIManager,
   ActivityIndicator,
-  useWindowDimensions  // Add this import
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AnalysisConnectionView from './AnalysisConnectionView';
+import { enableLayoutAnimations } from '../../utils/layoutAnimationUtil';
 
 // Remove the static dimensions - these won't update on rotation
 // const { width, height } = Dimensions.get('window');
 
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// Enable LayoutAnimation on Android with proper architecture check
+enableLayoutAnimations();
 
 // Individual Analysis Item Component
 const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {

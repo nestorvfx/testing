@@ -1,153 +1,90 @@
-# PerplexitySceneCapture
+# Perplexity Scene Capture
 
-A responsive React Native app that records using the device's camera and automatically captures the center square portion of the video feed every 5 seconds. The captured images are displayed as overlapping cards in the bottom left of the screen.
+A mobile application that lets you capture images and get AI-powered analysis of their content. This tool helps you identify and learn about objects, scenes, or documents through your camera.
 
 ## Features
 
-- Camera access with permission handling
-- Automatic square image capture every 5 seconds during recording
-- Voice-activated capture with custom prompts
-- Speech recognition for hands-free operation
-- Responsive design that adapts to device orientation changes
-- Visual indicator of the capture area in the center of the screen
-- Card-style display of captured images in the bottom left corner
-- Recording state indicator
-- Simple record/stop button interface
+- **Multi-platform Camera**: Capture photos across iOS, Android, and web platforms
+- **Voice-activated Capture**: Speak to automatically capture photos with attached voice context
+- **Visual Analysis**: Process images through Perplexity AI to identify content
+- **Multi-image Analysis**: Connect information across several related photos
+- **Immediate or Batch Processing**: Choose between instant or later analysis
+- **Offline Capability**: Take photos without internet and analyze when connected
 
-## How to Use
+## How It Works
 
-1. Start the app
-2. Grant camera, microphone and media permissions when prompted
-3. Press the "Record" button to begin recording, or use voice commands
+1. **Capture Photos**: Use the camera button or voice commands to take pictures
+2. **Voice Capture**: When voice mode is active, speaking automatically captures an image and attaches your words as context
+3. **Process Images**: Send photos for AI analysis individually or in batches
+4. **View Results**: Receive detailed information about what's in each photo
+5. **Deep Analysis**: Compare multiple images to find connections between them
 
-## Development Setup
+## Key Controls
+
+- **Voice Button**: Toggle voice capture mode (top right)
+- **Immediate Analysis**: Toggle automatic analysis after capture (next to voice button)
+- **Capture Button**: Take photos manually (center bottom)
+- **Analyze Button**: Process pending images (bottom right)
+- **Deep Analysis**: Analyze connections between multiple images (bottom right)
+- **Card Stack**: View and expand captured images (bottom left)
+
+## Technical Overview
+
+- **Framework**: React Native with Expo
+- **Image Analysis**: Perplexity AI API integration with two models:
+  - Standard analysis for individual images
+  - Deep research model for multi-image connections
+- **Speech Recognition**: Tiered fallback system:
+  - Azure Speech Services (primary)
+  - Web Speech API (web fallback)
+  - Custom continuous recognition module for Android
+- **Cross-platform**: Unified codebase with platform-specific optimizations
+
+## Requirements
+
+- iOS 13+ or Android 7+
+- Web: Modern browsers (Chrome, Firefox, Safari, Edge)
+- Camera and microphone permissions required
+- Internet connection for analysis functions
+
+## Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/your-username/perplexity-scene-capture.git
+
+# Navigate to project directory
+cd perplexity-scene-capture
+
 # Install dependencies
 npm install
 
-# Start development server
+# Start the application
 npm start
-
-# Run on Android
-npm run android
-
-# Run on iOS
-npm run ios
-
-# Run on Web
-npm run web
 ```
 
-## Production Builds
+## Data Handling
 
-To create production builds with all debug code and console logs removed:
+- Images are processed through secure API connections
+- Voice data is processed locally when possible
+- Analysis results are stored on your device only
+- No permanent cloud storage of user content
 
-```bash
-# For Android
-npm run prod:android
+## Troubleshooting
 
-# For iOS
-npm run prod:ios
-
-# For Web
-npm run build:web
-```
-
-The production builds use Babel's transform-remove-console plugin to automatically strip all console.log statements from the code while preserving critical error messages.
-
-## Configuration
-
-The app uses various configuration files:
-
-- `app.json` - Expo configuration
-- `babel.config.js` - Babel configuration, including console log removal for production
-- `eas.json` - EAS Build configuration
-4. The app will automatically capture images every 5 seconds
-5. Captured images appear as cards in the bottom left
-6. Press "Stop" to end recording and capture process
-
-## Android Microphone Permissions
-
-For Android users experiencing microphone issues:
-
-1. Make sure you've granted microphone permissions to the app
-2. Long-press the microphone button (🎙️) to run a microphone test that will diagnose common issues
-3. If the test fails, follow the specific troubleshooting guidance provided
-
-### Common Android Microphone Issues
-
-- **Permission Denied**: Go to Settings > Apps > PerplexitySceneCapture > Permissions and enable Microphone
-- **Microphone Muted**: Check if your device's microphone is muted in the system settings
-- **No Audio Detected**: Ensure your microphone is not physically blocked or covered
-- **Other Apps Using Microphone**: Close other apps that might be using the microphone
-- **Restart Required**: Some devices require a restart after granting microphone permissions
-
-**Additional Troubleshooting for Android Devices:**
-
-- **Missing Native Audio Modules**: If you see "audio manager module not available" in logs, restart your device and try again
-- **Audio API Compatibility**: Some newer Android devices may require specific compatibility settings
-  1. Go to Settings > Apps > PerplexitySceneCapture > Advanced > API compatibility
-  2. Try switching between different API levels if available
-- **Background Processes**: Kill background processes that might be interfering with audio
-  1. Go to Settings > Apps > Running
-  2. Force stop any audio-related apps or services
-
-For Xiaomi, Redmi, POCO and similar devices:
-1. Go to Settings > Privacy > Permissions
-2. Find "Microphone" and ensure it's enabled for this app
-3. Check for any system-level microphone protection that might be blocking the app
-4. Disable "MIUI Optimization" in Developer Options temporarily
-
-If issues persist, try these steps:
-1. Clear the app's cache: Settings > Apps > PerplexitySceneCapture > Storage > Clear Cache
-2. Reinstall the app with microphone permissions granted on first prompt
-3. Make sure "Allow background activity" is enabled for more reliable audio processing
-
-If you're using Android 11+ (API level 30 or higher), temporary permissions might expire after a few days. You may need to re-grant them regularly.
-
-If issues persist, try restarting the app and your device.
-
-## Technical Implementation
-
-- Uses Expo Camera for video recording
-- Azure Speech Services for voice recognition
-- Responsive layout adapts to orientation changes
-- Capture area is determined by the smaller dimension of the screen
-- Images are stored in an array with a limit of 10 for performance
-- Overlapping card effect created with negative margins and z-index
+- **Camera Issues**: Verify camera permissions in device settings
+- **Voice Recognition Problems**: Check microphone permissions and try using the long-press diagnostic on the voice button
+- **Analysis Failures**: Confirm internet connectivity
+- **Android Voice Issues**: The app includes automatic fixes for common Android microphone problems
 
 ## Development
 
-### Prerequisites
+This project uses several custom components:
+- Custom crypto-polyfill for web platform compatibility
+- Android-specific audio fixes for improved voice recognition
+- Cross-platform camera handling with platform-specific optimizations
+- Custom continuous speech recognition module for Android
 
-- Node.js
-- Expo CLI
-- React Native development environment
+## License
 
-### Installation
-
-```bash
-npm install
-```
-
-### Running the App
-
-```bash
-npx expo start
-```
-
-Scan the QR code with the Expo Go app on your mobile device or use an emulator.
-
-## Dependencies
-
-- expo
-- expo-camera
-- expo-media-library
-- expo-screen-orientation
-- expo-status-bar
-- react-native-gesture-handler
-- react-native-reanimated
-- react-native-safe-area-context
-- microsoft-cognitiveservices-speech-sdk
-- text-encoding (for TextEncoder/TextDecoder polyfill)
+MIT License - See LICENSE file for details
