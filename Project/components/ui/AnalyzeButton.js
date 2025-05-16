@@ -3,15 +3,6 @@ import { TouchableOpacity, Text, View, ActivityIndicator, StyleSheet } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 
 const AnalyzeButton = ({ onPress, isAnalyzing, unanalyzedCount, pendingAnalysisCount }) => {
-  // Log detailed information about the counts being passed to this component
-  useEffect(() => {
-    console.log('\n[RED CIRCLE] AnalyzeButton Render:');
-    console.log(`  pendingAnalysisCount: ${pendingAnalysisCount} (Used for the red circle)`);
-    console.log(`  unanalyzedCount: ${unanalyzedCount} (Total unanalyzed images)`);
-    console.log(`  isAnalyzing: ${isAnalyzing}`);
-    console.log('  Note: pendingAnalysisCount should include failed analyses that need retry');
-  }, [pendingAnalysisCount, unanalyzedCount, isAnalyzing]);
-
   // pendingAnalysisCount is the count of images that haven't been sent to analysis yet
   // unanalyzedCount includes both images in analysis queue and pending ones
   return (

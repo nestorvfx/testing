@@ -1,5 +1,7 @@
 package com.azurespeech.continuous;
 
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import androidx.annotation.NonNull;
 
@@ -161,12 +163,42 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
                         
                         sendEvent("onSpeechResults", params);
                         
-                        // Immediately stop listening to prevent duplicate final results
+                        // Stop then automatically restart for cleaner segmentation
                         try {
-                            recognizer.stopContinuousRecognitionAsync();
+                            // Use a shorter timeout for restart to maintain responsiveness
+                            Handler handler = new Handler(Looper.getMainLooper());
+                            
+                            // Stop current recognition
+                            recognizer.stopContinuousRecognitionAsync().get();
                             isListening = false;
+                            
+                            // Wait briefly then restart
+                            handler.postDelayed(() -> {
+                                try {
+                                    if (recognizer != null) {
+                                        Log.d(TAG, "Auto-restarting speech recognition after processing final result");
+                                        recognizer.startContinuousRecognitionAsync();
+                                        isListening = true;
+                                        
+                                        // Send a new speech start event
+                                        WritableMap startParams = Arguments.createMap();
+                                        startParams.putString("value", "Session restarted");
+                                        sendEvent("onSpeechStart", startParams);
+                                    }
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error restarting recognition", e);
+                                }
+                            }, 300); // Reduced from 500ms to 300ms for faster restart
                         } catch (Exception e) {
                             Log.e(TAG, "Error stopping recognition after final result", e);
+                            
+                            // Try to recover by directly restarting
+                            try {
+                                recognizer.startContinuousRecognitionAsync();
+                                isListening = true;
+                            } catch (Exception restartError) {
+                                Log.e(TAG, "Failed to restart after error", restartError);
+                            }
                         }
                     }
                 } else if (recognitionEventArgs.getResult().getReason() == ResultReason.NoMatch) {

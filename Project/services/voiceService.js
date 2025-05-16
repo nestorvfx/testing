@@ -116,6 +116,19 @@ class VoiceService {
       // Initialize service if needed
       if (!this.isInitialized) {
         await this.initialize(language);
+      } else {
+        // If already initialized but not listening, make sure we reset any internal state
+        // This helps ensure a clean start for the new recognition session
+        if (Platform.OS === 'android' && this.androidModule) {
+          // Trying to restart the Android module more cleanly
+          try {
+            await this.androidModule.stop();
+            // Small delay before starting again
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (e) {
+            // Ignore errors during reset - just continue with start
+          }
+        }
       }
 
       // For Android, prioritize the custom module
@@ -142,6 +155,7 @@ class VoiceService {
       throw error;
     }
   }
+  
   /**
    * Stop speech recognition
    * @returns {Promise<void>}
@@ -164,6 +178,39 @@ class VoiceService {
       console.error('Error stopping speech recognition:', error);
     } finally {
       this.isListening = false;
+      
+      // Explicitly trigger the onSpeechEnd event if it hasn't been triggered
+      if (this.onSpeechEnd) {
+        this.onSpeechEnd();
+      }
+    }
+  }
+  
+  /**
+   * Reset speech recognition - stops and restarts to ensure a clean state
+   * @param {string} language - Language code for speech recognition (e.g., 'en-US')
+   * @returns {Promise<void>}
+   */
+  async reset(language = 'en-US') {
+    try {
+      // Stop current recognition if active
+      if (this.isListening) {
+        await this.stop();
+      }
+      
+      // Short delay to ensure clean restart
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Start fresh
+      await this.start(language);
+    } catch (error) {
+      console.error('Error resetting speech recognition:', error);
+      if (this.onSpeechError) {
+        this.onSpeechError({
+          error: 'reset_error',
+          message: error.message || 'Failed to reset speech recognition'
+        });
+      }
     }
   }
 

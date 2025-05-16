@@ -163,13 +163,9 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       // Reset state for new session
       setErrorMessage('');
       
-      // We don't want to reset speechTextRef.current here anymore
-      // because we want to keep the accumulated text across restarts
-      // Only reset if we previously had an error
-      if (isErrorRestartRef.current) {
-        speechTextRef.current = '';
-        isErrorRestartRef.current = false;
-      }
+      // Always reset the speech text when starting a new voice recognition session
+      // This ensures we don't have stale text from a previous session
+      speechTextRef.current = '';
       
       setIsPaused(false);
       
@@ -179,8 +175,13 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       pendingResultsRef.current.processingFinal = false;
       pendingResultsRef.current.lastPartial = '';
       
+      // Reset result tracking variables
+      lastResultTextRef.current = '';
+      lastResultTimeRef.current = 0;
+      
       // Reset error counters
       consecutiveErrorsRef.current = 0;
+      isErrorRestartRef.current = false;
       
       // Set up event handlers
       VoiceService.onSpeechStart = handleSpeechStart;
@@ -235,9 +236,16 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     try {
       logInfo('Pausing voice recognition due to long silence');
       
-      // We don't need to process speech here anymore since we now do it after brief silence
-      // But still finalize any pending speech if it hasn't been done yet
-      if (!pendingResultsRef.current.silenceProcessed) {
+      // Process any pending speech before pausing
+      // Check if we have any accumulated text that hasn't been processed
+      if (speechTextRef.current && speechTextRef.current.length > 3 && !pendingResultsRef.current.silenceProcessed) {
+        logInfo(`Processing speech before pausing: "${speechTextRef.current}"`);
+        finalizeSpeechAfterSilence();
+      }
+      // Or if we have any pending results that haven't been processed
+      else if (pendingResultsRef.current.pendingResults && 
+               pendingResultsRef.current.pendingResults.length > 0 &&
+               !pendingResultsRef.current.silenceProcessed) {
         finalizeSpeechAfterSilence();
       }
       
@@ -261,8 +269,17 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       logInfo('Resuming voice recognition');
       // Reset state for new session
       setErrorMessage('');
+      
+      // Reset all speech recognition state variables
       speechTextRef.current = '';
       pendingResultsRef.current.silenceProcessed = false;
+      pendingResultsRef.current.pendingResults = [];
+      pendingResultsRef.current.processingFinal = false;
+      pendingResultsRef.current.lastPartial = '';
+      
+      // Reset result tracking variables
+      lastResultTextRef.current = '';
+      lastResultTimeRef.current = 0;
       
       // Start listening
       await VoiceService.start('en-US');
@@ -333,8 +350,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       clearTimeout(briefSilenceTimerRef.current);
       briefSilenceTimerRef.current = null;
     }
-  };
-  // Finalize speech after a brief silence period
+  };  // Finalize speech after a brief silence period
   const finalizeSpeechAfterSilence = () => {
     // Get all pending results
     const pendingResults = pendingResultsRef.current.pendingResults;
@@ -355,6 +371,10 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         if (onSpeechResult) {
           logInfo(`Processing finalized speech result: "${lastResult.text}"`);
           onSpeechResult(lastResult.text, true, volume);
+          
+          // Reset speech text and silenceProcessed flag after onSpeechResult is called
+          // This allows new speech to be recognized immediately after capture
+          resetSpeechState();
         }
       }
       
@@ -371,10 +391,36 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         // Process the result
         if (onSpeechResult) {
           onSpeechResult(accumulatedText, true, volume);
+          
+          // Reset speech text and silenceProcessed flag after onSpeechResult is called
+          resetSpeechState();
         }
+      } else {
+        // Important: Even if no text to process, reset the silenceProcessed flag
+        // to allow new speech to be recognized
+        pendingResultsRef.current.silenceProcessed = false;
       }
     }
-  };  // Get background color based on state
+  };
+  
+  // Add a dedicated function to reset speech state
+  const resetSpeechState = () => {
+    // Reset all the speech-related state to handle new input
+    speechTextRef.current = '';
+    pendingResultsRef.current.silenceProcessed = false;
+    pendingResultsRef.current.lastPartial = '';
+    lastResultTextRef.current = '';
+    
+    // Clear any pending results
+    pendingResultsRef.current.pendingResults = [];
+    
+    // Also reset the recent results array used for deduplication
+    pendingResultsRef.current.recent = [];
+    
+    logInfo('Reset speech recognition state for new input');
+  };
+  
+  // Get background color based on state
   const getBackgroundColor = () => {
     if (inCooldown) {
       return styles.cooldown.backgroundColor;
@@ -459,8 +505,26 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     startSilenceTimer();
     stopBriefSilenceTimer(); // Stop brief silence timer when speech starts
     
-    // Reset the silence processed flag when new speech starts
-    pendingResultsRef.current.silenceProcessed = false;
+    // Force reset the speech state when new speech starts
+    if (pendingResultsRef.current.silenceProcessed) {
+      logInfo('Forcing reset of silenceProcessed flag on new speech');
+      pendingResultsRef.current.silenceProcessed = false;
+    }
+    
+    // Clear the speech text when new speech starts to prevent showing old text
+    if (speechTextRef.current && speechTextRef.current.length > 0) {
+      logInfo('Clearing previous speech text as new speech begins');
+      speechTextRef.current = '';
+    }
+    
+    // Also clear any pending results
+    if (pendingResultsRef.current.pendingResults && pendingResultsRef.current.pendingResults.length > 0) {
+      pendingResultsRef.current.pendingResults = [];
+    }
+    
+    // Reset tracking variables to ensure new speech is processed correctly
+    lastResultTextRef.current = '';
+    pendingResultsRef.current.lastPartial = '';
   };
   
   const handleSpeechEnd = (e) => {
@@ -526,7 +590,8 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       startBriefSilenceTimer();
     }
   };
-    // Helper function to check if a result is similar to a recent one
+  
+  // Helper function to check if a result is similar to a recent one
   const isSimilarToRecentResult = (text, currentTime) => {
     // Initialize recent results array if not already
     if (!pendingResultsRef.current.recent) {
@@ -535,12 +600,22 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     }
     
     // Filter to only include results within deduplication time window
+    // Reduce window from 5000ms to 3000ms to be less aggressive with deduplication
+    const dedupeTimeWindow = 3000; // 3 seconds instead of 5
     const recentResults = pendingResultsRef.current.recent.filter(
-      item => currentTime - item.time < resultDedupeTimeMs
+      item => currentTime - item.time < dedupeTimeWindow
     );
+    
+    // Update the recent results in the ref
+    pendingResultsRef.current.recent = recentResults;
     
     // No previous results to compare against
     if (recentResults.length === 0) {
+      // Add this text to recent results
+      pendingResultsRef.current.recent.push({
+        text: text,
+        time: currentTime
+      });
       return false;
     }
     
@@ -550,11 +625,15 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       return true;
     }
     
-    // Check for substring or very similar phrases
+    // Check for substring or very similar phrases - make this less strict
     for (const item of recentResults) {
+      // Only consider substantial strings for similarity checking
+      if (text.length < 4 || item.text.length < 4) continue;
+      
       // If one is a substring of the other with significant overlap
-      if ((text.includes(item.text) && item.text.length > 10) || 
-          (item.text.includes(text) && text.length > 10)) {
+      // Make more strict - require longer overlaps (15 chars instead of 10)
+      if ((text.includes(item.text) && item.text.length > 15) || 
+          (item.text.includes(text) && text.length > 15)) {
         logInfo(`Substring similarity detected between "${text}" and "${item.text}"`);
         return true;
       }
@@ -564,12 +643,18 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       const distance = levenshteinDistance(text.toLowerCase(), item.text.toLowerCase());
       const maxLength = Math.max(text.length, item.text.length);
       
-      // If the strings are at least 90% similar (stricter threshold)
-      if (distance / maxLength < 0.1) {
+      // If the strings are at least 95% similar (more strict - was 90%)
+      if (distance / maxLength < 0.05) {
         logInfo(`Levenshtein similarity detected (${Math.round((1-(distance/maxLength))*100)}%) between "${text}" and "${item.text}"`);
         return true;
       }
     }
+    
+    // Add this text to recent results for future comparisons
+    pendingResultsRef.current.recent.push({
+      text: text,
+      time: currentTime
+    });
     
     return false;
   };

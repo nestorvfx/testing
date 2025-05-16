@@ -1,18 +1,37 @@
 import React from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, useWindowDimensions } from 'react-native';
 
-const AnalysisStatusIndicator = ({ analyzedCount, totalCount, analysisInProgress }) => {
-  // Calculate completion percentage
-  const completionPercentage = totalCount > 0 ? Math.round((analyzedCount / totalCount) * 100) : 0;
+const AnalysisStatusIndicator = ({ analysisSession, analysisInProgress }) => {
+  // Use session data instead of direct counts
+  const { active, analyzedImagesInSession, totalImagesInSession } = analysisSession;
   
-  // Only show when there are images and some are analyzed (but not all)
-  if (totalCount === 0 || (analyzedCount === 0 && !analysisInProgress) || (analyzedCount === totalCount && !analysisInProgress)) {
+  // Get window dimensions to calculate constraints
+  const { width, height } = useWindowDimensions();
+  
+  // Calculate max width based on 70% of width and 50% of height
+  const maxWidth = Math.min(width * 0.7, height * 0.5);
+  
+  // Calculate completion percentage based on session data
+  const completionPercentage = totalImagesInSession > 0 
+    ? Math.round((analyzedImagesInSession / totalImagesInSession) * 100) 
+    : 0;
+  
+  // Only show when session is active or analysis is in progress
+  if (!active && !analysisInProgress || totalImagesInSession === 0) {
+    return null;
+  }
+  
+  // Hide when all images in the session have been analyzed and analysis is not in progress
+  if (analyzedImagesInSession >= totalImagesInSession && !analysisInProgress) {
     return null;
   }
   
   return (
     <View style={styles.container}>
-      <View style={styles.progressContainer}>
+      <View style={[
+        styles.progressContainer,
+        { width: maxWidth } // Apply the calculated max width
+      ]}>
         <View 
           style={[
             styles.progressBar, 
@@ -21,7 +40,7 @@ const AnalysisStatusIndicator = ({ analyzedCount, totalCount, analysisInProgress
         />
       </View>
       <Text style={styles.statusText}>
-        `Analyzed ${analyzedCount}/${totalCount}`
+        Analyzed {analyzedImagesInSession}/{totalImagesInSession}
       </Text>
     </View>
   );
@@ -30,7 +49,7 @@ const AnalysisStatusIndicator = ({ analyzedCount, totalCount, analysisInProgress
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 100, // Position above the deep analysis button
+    bottom: 140, // Position above the deep analysis button
     left: 20,
     right: 20,
     alignItems: 'center',
@@ -39,7 +58,7 @@ const styles = StyleSheet.create({
   },
   progressContainer: {
     height: 4,
-    width: '80%',
+    // Width is now applied dynamically with the calculated maxWidth
     backgroundColor: 'rgba(0, 0, 0, 0.1)',
     borderRadius: 2,
     overflow: 'hidden',

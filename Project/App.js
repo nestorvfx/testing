@@ -1,8 +1,7 @@
 import './src/utils/crypto-polyfill';
 import './polyfills';
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { View, Dimensions, TouchableOpacity, Text, Platform, StyleSheet, Alert, ScrollView } from 'react-native';
-import { Camera } from 'expo-camera';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { View, Dimensions, Platform, StyleSheet, Alert } from 'react-native';
 
 // Components
 import CameraView from './components/camera/CameraView';
@@ -11,10 +10,8 @@ import CardGroup from './components/cards/CardGroup';
 import CardStack from './components/cards/CardStack';
 import ExpandedCard from './components/cards/ExpandedCard';
 import ErrorView from './components/ui/ErrorView';
-import { LoadingPermissionView, MediaPermissionView, DeniedPermissionView } from './components/ui/PermissionViews';
 import AnalyzeButton from './components/ui/AnalyzeButton';
 import DeepAnalysisButton from './components/ui/DeepAnalysisButton';
-import DeepAnalysisDialog from './components/ui/DeepAnalysisDialog';
 import DeepAnalysisResults from './components/ui/DeepAnalysisResults';
 import NewAnalysisPromptModal from './components/ui/NewAnalysisPromptModal';
 import AnalysisStatusIndicator from './components/ui/AnalysisStatusIndicator';
@@ -31,11 +28,9 @@ import { useCardStack } from './hooks/useCardStack';
 // Services
 import { analyzeImages, performDeepAnalysis, registerAnalysisEventHandlers } from './services/perplexityService';
 import { PRIORITY } from './services/analysisQueue';
-import { calculateCounters, logCounting, logImageStates } from './services/analysisCounting';
 
 // Styles and constants
 import { styles } from './styles';
-import { isWeb } from './constants';
 
 export default function App() {
   // State for device dimensions
@@ -120,7 +115,7 @@ export default function App() {
       !img.analyzed && 
       !imagesSentForAnalysis.has(img.uri)
     ).length;
-    console.log(`[RED CIRCLE] Updating pendingAnalysisCount from initialize effect: ${pendingCount}`);
+    
     setPendingAnalysisCount(pendingCount);
   }, [captures, imagesSentForAnalysis]); // Re-run when captures or imagesSentForAnalysis change
 
@@ -197,6 +192,23 @@ export default function App() {
             // Set the main analyzing flag
             setIsAnalyzing(true);
             
+            // Update analysis session to include this image
+            setAnalysisSession(prevSession => {
+              if (prevSession.active) {
+                return {
+                  ...prevSession,
+                  totalImagesInSession: prevSession.totalImagesInSession + 1
+                };
+              } else {
+                return {
+                  active: true,
+                  startedAt: Date.now(),
+                  totalImagesInSession: 1,
+                  analyzedImagesInSession: 0
+                };
+              }
+            });
+            
             // Voice-prompted analyses get highest priority
             await analyzeImages([capture], PRIORITY.HIGH);
           } catch (err) {
@@ -219,10 +231,16 @@ export default function App() {
         setCaptureDisabled(false);
       }, 1200); // Increased to 1.2 seconds to prevent rapid captures
       
-      // IMPORTANT: Don't turn off voice recognition after a capture
-      // This allows the system to continue listening for more prompts
+      // IMPORTANT: Toggle voice off and on briefly to ensure proper reset
+      // This forces a clean restart of the speech recognition
+      if (isVoiceActive) {
+        setIsVoiceActive(false);
+        setTimeout(() => {
+          setIsVoiceActive(true);
+        }, 300);
+      }
     }
-  }, [cameraRef, handleNewImage, analyzeImages, setPendingAnalysisCount]);
+  }, [cameraRef, handleNewImage, analyzeImages, setPendingAnalysisCount, isVoiceActive]);
   
   // Ensure camera is ready before capturing
   const handleCapturePhoto = useCallback(async (customPrompt = '') => {
@@ -269,6 +287,23 @@ export default function App() {
           // Set the main analyzing flag
           setIsAnalyzing(true);
           
+          // Update analysis session to include this image
+          setAnalysisSession(prevSession => {
+            if (prevSession.active) {
+              return {
+                ...prevSession,
+                totalImagesInSession: prevSession.totalImagesInSession + 1
+              };
+            } else {
+              return {
+                active: true,
+                startedAt: Date.now(),
+                totalImagesInSession: 1,
+                analyzedImagesInSession: 0
+              };
+            }
+          });
+          
           try {
             // Use PRIORITY.HIGH for immediate analysis
             await analyzeImages([photoWithPrompt], PRIORITY.HIGH);
@@ -310,13 +345,13 @@ export default function App() {
     setAnalysisSession(prevSession => {
       // If there's an active session, add to it, otherwise create new session
       if (prevSession.active) {
-        console.log(`[ANALYSIS SESSION] Adding ${unanalyzedImages.length} images to existing session`);
+        
         return {
           ...prevSession,
           totalImagesInSession: prevSession.totalImagesInSession + unanalyzedImages.length
         };
       } else {
-        console.log(`[ANALYSIS SESSION] Starting new session with ${unanalyzedImages.length} images`);
+        
         return {
           active: true,
           startedAt: Date.now(),
@@ -367,7 +402,7 @@ export default function App() {
         // If this was the last active analysis, set to false
         const shouldSetToFalse = activeAnalysisCount <= 1;
         if (shouldSetToFalse) {
-          console.log("[Analysis Debug] Setting isAnalyzing to false - no more active analyses");
+          
           return false;
         }
         return prevIsAnalyzing;
@@ -459,7 +494,7 @@ export default function App() {
       onAnalysisStart: (count) => {
         // The setActiveAnalysisCount is now handled at the start of each analysis operation
         setIsAnalyzing(true);
-        console.log(`[Analysis Debug] Starting analysis of ${count} images`);
+        
       },
       onAnalysisComplete: (updatedImages, failedAnalyses = []) => {
         // Create a copy of the current captures to avoid reference issues
@@ -477,14 +512,14 @@ export default function App() {
         updateCaptures(capturesCopy);
         
         // Log the state after updating captures
-        console.log(`[Analysis Debug] Analysis completed. Updated: ${updatedImages.length}, Failed: ${failedAnalyses.length}`);
+        
         
         // Add specific logging for red circle counter
-        console.log(`[RED CIRCLE] Analysis complete event: ${updatedImages.length} successes, ${failedAnalyses.length} failures`);
+        
         
         if (failedAnalyses.length > 0) {
-          console.log(`[Analysis Debug] Failed analyses: ${failedAnalyses.map(img => img.uri.substring(0, 20) + '...').join(', ')}`);
-          console.log(`[RED CIRCLE] Failed analyses will now be included in red circle counter`);
+          
+          
         }
         
         // Update analysis session state
@@ -493,15 +528,15 @@ export default function App() {
           const successfullyAnalyzed = prevSession.analyzedImagesInSession + updatedImages.length;
           const newTotalImages = prevSession.totalImagesInSession - failedAnalyses.length;
           
-          console.log(`[ANALYSIS SESSION] Updating session - successful: ${updatedImages.length}, failed: ${failedAnalyses.length}`);
-          console.log(`[ANALYSIS SESSION] New counts - analyzed: ${successfullyAnalyzed}, total: ${newTotalImages}`);
+          
+          
           
           // Determine if all images in the session are now analyzed
           const isSessionComplete = successfullyAnalyzed >= newTotalImages;
           
           // If session is complete, clean it up after a delay
           if (isSessionComplete) {
-            console.log(`[ANALYSIS SESSION] Session complete, scheduling cleanup`);
+            
             // Schedule session reset after showing the complete state for a moment
             setTimeout(() => {
               setAnalysisSession({
@@ -510,7 +545,7 @@ export default function App() {
                 totalImagesInSession: 0,
                 analyzedImagesInSession: 0
               });
-              console.log(`[ANALYSIS SESSION] Session cleared`);
+              
             }, 2000);
           }
           
@@ -530,7 +565,7 @@ export default function App() {
           // Check current active analysis count (will be 1 if this is the last one)
           const shouldSetToFalse = activeAnalysisCount <= 1;
           if (shouldSetToFalse) {
-            console.log("[Analysis Debug] Setting isAnalyzing to false - no more active analyses");
+            
             return false;
           }
           return prevIsAnalyzing;
@@ -547,7 +582,7 @@ export default function App() {
           
           // Log imagesSentForAnalysis state after update
           setTimeout(() => {
-            console.log(`[Analysis Debug] After failures, imagesSentForAnalysis size: ${imagesSentForAnalysis.size}`);
+            
           }, 0);
         } else {
           // FIX: Instead of resetting the entire set, only remove the successfully analyzed images
@@ -555,13 +590,13 @@ export default function App() {
             const newSet = new Set(prev);
             // Remove only the successfully analyzed images
             updatedImages.forEach(img => newSet.delete(img.uri));
-            console.log(`[RED CIRCLE] After successful analysis, imagesSentForAnalysis size: ${newSet.size}`);
+            
             return newSet;
           });
         }
       },
       onImageAnalyzed: (image) => {
-        console.log(`[Analysis Debug] Image analyzed: ${image.uri.substring(0, 20)}...`);
+        
         
         // Update a single image by modifying the state with a function
         // This ensures we always have the latest state to work with
@@ -589,8 +624,8 @@ export default function App() {
         
         // If we have a specific image that failed
         if (failedImage) {
-          console.log(`[Analysis Debug] Failed image: ${failedImage.uri.substring(0, 20)}...`);
-          console.log(`[RED CIRCLE] Processing failed image in App.js error handler`);
+          
+          
           
           // Update with functional form to get latest state
           updateCaptures(prevCaptures => {
@@ -603,10 +638,10 @@ export default function App() {
                 analyzed: false 
               };
               
-              console.log(`[RED CIRCLE] App.js marked image as failed: analyzed=false`);
-              console.log(`[RED CIRCLE] This change should now include this image in the red circle count`);
               
-              console.log(`[Analysis Debug] Marked image as failed: ${failedImage.uri.substring(0, 20)}...`);
+              
+              
+              
             }
             
             return capturesCopy;
@@ -616,7 +651,7 @@ export default function App() {
           setImagesSentForAnalysis(prev => {
             const newSet = new Set(prev);
             newSet.delete(failedImage.uri);
-            console.log(`[Analysis Debug] Removed failed image from imagesSentForAnalysis: ${failedImage.uri.substring(0, 20)}...`);
+            
             return newSet;
           });
           
@@ -756,16 +791,8 @@ export default function App() {
     const pendingCount = captures.filter(img => 
       !img.analyzed && 
       !imagesSentForAnalysis.has(img.uri)
-    ).length;
+    ).length;    
     
-    // Log detailed counting information
-    const counters = calculateCounters(captures, imagesSentForAnalysis);
-    logCounting(counters, 'actualPendingCount');
-    logImageStates(captures, imagesSentForAnalysis);
-    
-    // Always update pendingAnalysisCount to reflect the current pending analysis count
-    console.log(`[RED CIRCLE] Updating pendingAnalysisCount from useMemo: ${pendingCount}`);
-    console.log(`[RED CIRCLE] Active analysis count: ${activeAnalysisCount}`);
     setPendingAnalysisCount(pendingCount);
     
     return pendingCount;
@@ -862,8 +889,7 @@ export default function App() {
       
       {/* Analysis status indicator */}
       <AnalysisStatusIndicator 
-        analyzedCount={captures.filter(img => img.analyzed).length}
-        totalCount={captures.length}
+        analysisSession={analysisSession}
         analysisInProgress={isAnalyzing}
       />
       
