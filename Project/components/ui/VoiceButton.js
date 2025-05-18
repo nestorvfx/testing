@@ -58,7 +58,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   const silenceTimerRef = useRef(null);
   const briefSilenceTimerRef = useRef(null);
   const silenceDurationMs = 20000; // 20 seconds of silence before pausing (increased from 10s)
-  const briefSilenceDurationMs = 3000; // 3 seconds of silence to finalize speech (increased from 2s)
+  const briefSilenceDurationMs = 1500; // 3 seconds of silence to finalize speech (increased from 2s)
     // Flag for restart after error (rather than silence)
   const isErrorRestartRef = useRef(false);
   
@@ -207,10 +207,6 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   };
   // Stop voice recognition
   const stopVoiceRecognition = async () => {
-    if (!isListening) {
-      return;
-    }
-    
     try {
       await VoiceService.stop();
     } catch (error) {
@@ -919,18 +915,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginHorizontal: 5,
-  },
-  button: {
+  },  button: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 3,
+      },
+      web: {
+        boxShadow: '0px 2px 2px rgba(0, 0, 0, 0.3)',
+      }
+    }),
   },
   inactive: {
     backgroundColor: '#f0f0f0',

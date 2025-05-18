@@ -275,16 +275,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     zIndex: 9998, // One less than overlay
     elevation: 9998,
-  },
-  container: {
+  },  container: {
     backgroundColor: '#f0f0f0',
     borderRadius: 16,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 9999, // Extreme elevation for Android
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 9999, // Extreme elevation for Android
+      },
+      web: {
+        boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
+      }
+    }),
     zIndex: 9999,
     // Force hardware acceleration on Android
     ...(Platform.OS === 'android' ? {
@@ -496,17 +504,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1000001,
     elevation: 1000001,
-  },
-  loadingContainer: {
+  },  loadingContainer: {
     backgroundColor: 'white',
     padding: 20,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.2)',
+      }
+    }),
   },
   loadingText: {
     marginTop: 10,

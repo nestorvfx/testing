@@ -73,21 +73,22 @@ const WebCamera = forwardRef(({ style, onCameraReady }, ref) => {
       }
     };
   }, []);
-
   // Return just the video element without children
+  // Using View wrapper to avoid direct style issues on video element
   return (
-    <video 
-      ref={videoRef} 
-      style={{ 
-        ...style,
-        width: '100%', 
-        height: '100%', 
-        objectFit: 'cover' 
-      }} 
-      autoPlay 
-      playsInline
-      muted
-    />
+    <View style={style}>
+      <video 
+        ref={videoRef} 
+        style={{ 
+          width: '100%', 
+          height: '100%', 
+          objectFit: 'cover' 
+        }} 
+        autoPlay 
+        playsInline
+        muted
+      />
+    </View>
   );
 });
 

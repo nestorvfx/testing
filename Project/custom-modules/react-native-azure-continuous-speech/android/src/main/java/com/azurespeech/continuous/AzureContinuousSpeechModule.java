@@ -20,7 +20,10 @@ import com.microsoft.cognitiveservices.speech.audio.AudioConfig;
 import com.microsoft.cognitiveservices.speech.ResultReason;
 import com.microsoft.cognitiveservices.speech.CancellationDetails;
 import com.microsoft.cognitiveservices.speech.CancellationReason;
+import com.microsoft.cognitiveservices.speech.CancellationErrorCode;
 
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -267,7 +270,7 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
                 if (details.getReason() == CancellationReason.Error) {
                     Log.e(TAG, "Recognition error with code: " + details.getErrorCode() + ", details: " + errorDetails);
                     params.putString("error", errorDetails);
-                    params.putInt("code", details.getErrorCode());
+                    params.putInt("code", details.getErrorCode().ordinal()); // Use ordinal() for enum to int conversion
                     params.putString("reason", "Error");
                 } else {
                     // Handle non-error cancellations (e.g., user stopped)
@@ -282,7 +285,7 @@ public class AzureContinuousSpeechModule extends ReactContextBaseJavaModule {
                 
                 // If cancelled due to a recoverable error, try to restart recognition
                 if (details.getReason() == CancellationReason.Error && 
-                    details.getErrorCode() < 10) {  // Assuming codes < 10 are recoverable
+                    details.getErrorCode().ordinal() < 10) {  // Using ordinal() for comparison with int
                     Log.d(TAG, "Attempting to restart recognition after recoverable error");
                     try {
                         // Delay restart by 1 second

@@ -229,7 +229,7 @@ export default function App() {
       // Allow new captures sooner
       setTimeout(() => {
         setCaptureDisabled(false);
-      }, 1200); // Increased to 1.2 seconds to prevent rapid captures
+      }, 1000); // Increased to 1.2 seconds to prevent rapid captures
       
       // IMPORTANT: Toggle voice off and on briefly to ensure proper reset
       // This forces a clean restart of the speech recognition
@@ -949,14 +949,23 @@ const customStyles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     borderRadius: 30,
     padding: 6,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 6, // Higher elevation to prevent it from appearing behind other elements
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 6, // Higher elevation to prevent it from appearing behind other elements
+      },
+      web: {
+        boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.3)',
+      }
+    }),
   },
   recordingIndicator: {
     position: 'absolute', 
