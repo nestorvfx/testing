@@ -111,6 +111,7 @@ export const setupAndroidContinuousFallback = async (azureConfig) => {
               isFinal: event.isFinal !== undefined ? event.isFinal : true
             };
             
+            // Immediately process without waiting
             if (listeners.onSpeechResults) listeners.onSpeechResults(formattedResults);
           },
           

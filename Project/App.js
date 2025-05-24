@@ -136,10 +136,16 @@ export default function App() {
   
   // Define processVoiceCapture first, before it's used in handleSpeechResult
   const processVoiceCapture = useCallback(async (text) => {
+    console.log('[APP_DEBUG] processVoiceCapture called with text:', text?.substring(0, 30) + (text?.length > 30 ? '...' : ''));
     // Don't proceed if camera isn't ready
     if (!cameraRef.current) {
+      console.log('[APP_DEBUG] Camera ref not ready, cannot capture');
       return;
     }
+    
+    console.log('[APP_DEBUG] Voice capture starting: isVoiceActive =', isVoiceActive, 
+                'isVoiceCapturing =', isVoiceCapturing, 
+                'captureDisabled =', captureDisabled);
     
     // isAnalyzing should NOT block voice capture
     setIsVoiceCapturing(true);
@@ -150,6 +156,17 @@ export default function App() {
     // Store timestamp to help identify duplicate captures
     const captureTimestamp = Date.now();
     
+      if (isVoiceActive) {
+        console.log('[APP_DEBUG] Voice toggle reset - turning voice recognition OFF');
+        setIsVoiceActive(false);
+        setTimeout(() => {
+          console.log('[APP_DEBUG] Voice toggle reset - turning voice recognition ON after 300ms delay');
+          setIsVoiceActive(true);
+        }, 300);
+      } else {
+        console.log('[APP_DEBUG] Voice toggle reset skipped - voice recognition already inactive');
+      }
+      
     try {
       // Take the photo directly
       const photo = await cameraRef.current.takePictureAsync({
@@ -217,28 +234,20 @@ export default function App() {
         }, 100);
       }
     } catch (err) {
-      console.error('Error during direct camera capture:', err);
+      console.error('[APP_DEBUG] Error during direct camera capture:', err);
       // Log more detailed error info
-      if (err.message) console.error(`Capture error: ${err.message}`);
+      if (err.message) console.error(`[APP_DEBUG] Capture error: ${err.message}`);
     } finally {
-      // Reset capture state immediately, not waiting for analysis to complete
-      setIsVoiceCapturing(false);
       setSpokenPrompt('');
-      setSpeechVolume(0);
       
       // Allow new captures sooner
+      const captureTimerDelay = 1000; // 1 second delay
+      console.log('[APP_DEBUG] Setting timer to re-enable captures after', captureTimerDelay, 'ms');
       setTimeout(() => {
         setCaptureDisabled(false);
-      }, 1000); // Increased to 1.2 seconds to prevent rapid captures
+      }, captureTimerDelay); // 1 second to prevent rapid captures
       
-      // IMPORTANT: Toggle voice off and on briefly to ensure proper reset
-      // This forces a clean restart of the speech recognition
-      if (isVoiceActive) {
-        setIsVoiceActive(false);
-        setTimeout(() => {
-          setIsVoiceActive(true);
-        }, 300);
-      }
+      
     }
   }, [cameraRef, handleNewImage, analyzeImages, setPendingAnalysisCount, isVoiceActive]);
   
@@ -412,25 +421,34 @@ export default function App() {
 
   // Handle speech recognition result - now defined after processVoiceCapture
   const handleSpeechResult = useCallback((text, isFinalized, volume = 0) => {
+    console.log('[APP_DEBUG] handleSpeechResult called: text length =', text?.length || 0, 
+                'isFinalized =', isFinalized, 
+                'volume =', volume, 
+                'captureDisabled =', captureDisabled);
+    
     // Always update UI with speech for visual feedback
     setSpokenPrompt(text);
     setSpeechVolume(volume);
     
     // Only capture photo when we have a finalized result
     if (isFinalized) {
+      console.log('[APP_DEBUG] Processing finalized speech result:', text);
       // Check if capture is in progress
       if (captureDisabled) {
+        console.log('[APP_DEBUG] Capture currently disabled, queueing for later processing');
         // Queue this capture for processing after current one completes
         setTimeout(() => {
+          console.log('[APP_DEBUG] Processing queued speech capture after 1s delay');
           processVoiceCapture(text);
-        }, 1500); // Wait 1.5 seconds before trying to process the queued capture
+        }, 1000); // Reduced from 1.5s to 1s for faster response
         return;
       }
       
+      console.log('[APP_DEBUG] Immediately processing voice capture');
       // Process the capture immediately if not disabled
       processVoiceCapture(text);
     }
-  }, [processVoiceCapture, captureDisabled]); // Now correctly depends on processVoiceCapture
+  }, [processVoiceCapture, captureDisabled]);
   
   // Deep analysis states
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);

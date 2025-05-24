@@ -32,6 +32,9 @@ class VoiceService {
     this.onSpeechPartialResults = null;
     this.onSpeechError = null;
     this.onSpeechVolumeChanged = null;
+    
+    // Add fast processing flag
+    this.fastProcessing = true;
   }
 
   /**
@@ -100,8 +103,7 @@ class VoiceService {
       console.error('Error initializing Android module:', error);
       return false;
     }
-  }
-  /**
+  }  /**
    * Start speech recognition
    * @param {string} language - Language code for speech recognition (e.g., 'en-US')
    * @returns {Promise<void>}
@@ -109,43 +111,51 @@ class VoiceService {
   async start(language = 'en-US') {
     // Prevent multiple starts
     if (this.isListening) {
+      console.log('[VOICE_DEBUG] start() called but already listening');
       return;
     }
 
+    console.log('[VOICE_DEBUG] Starting speech recognition with language:', language);
     try {
       // Initialize service if needed
       if (!this.isInitialized) {
+        console.log('[VOICE_DEBUG] Service not initialized, initializing now');
         await this.initialize(language);
       } else {
         // If already initialized but not listening, make sure we reset any internal state
         // This helps ensure a clean start for the new recognition session
         if (Platform.OS === 'android' && this.androidModule) {
+          console.log('[VOICE_DEBUG] Restarting Android module cleanly');
           // Trying to restart the Android module more cleanly
           try {
             await this.androidModule.stop();
+            console.log('[VOICE_DEBUG] Successfully stopped Android module');
             // Small delay before starting again
             await new Promise(resolve => setTimeout(resolve, 100));
           } catch (e) {
+            console.warn('[VOICE_DEBUG] Error during Android module restart:', e.message);
             // Ignore errors during reset - just continue with start
           }
         }
-      }
-
-      // For Android, prioritize the custom module
+      }      // For Android, prioritize the custom module
       if (Platform.OS === 'android' && this.androidModule) {
+        console.log('[VOICE_DEBUG] Using Android custom module to start recognition');
         await this.androidModule.start();
         this.isListening = true;
+        console.log('[VOICE_DEBUG] Android module started successfully');
         
         if (this.onSpeechStart) {
+          console.log('[VOICE_DEBUG] Manually triggering onSpeechStart event');
           this.onSpeechStart();
         }
         return;
       }
 
       // For other platforms or if Android module fails
+      console.log('[VOICE_DEBUG] Using fallback recognition method');
       this._startFallbackRecognition(language);
     } catch (error) {
-      console.error('Error starting speech recognition:', error);
+      console.error('[VOICE_DEBUG] Error starting speech recognition:', error.message, error.stack);
       if (this.onSpeechError) {
         this.onSpeechError({
           error: 'start_error', 
@@ -155,56 +165,75 @@ class VoiceService {
       throw error;
     }
   }
-  
-  /**
+    /**
    * Stop speech recognition
    * @returns {Promise<void>}
    */
   async stop() {
     if (!this.isListening) {
+      console.log('[VOICE_DEBUG] stop() called but not listening');
       return;
     }
 
+    console.log('[VOICE_DEBUG] Stopping speech recognition');
     try {
       // For Android, use the custom module if available
       if (Platform.OS === 'android' && this.androidModule) {
+        console.log('[VOICE_DEBUG] Using Android custom module to stop');
         await this.androidModule.stop();
+        console.log('[VOICE_DEBUG] Android module stopped successfully');
       } 
       // Fallback for other platforms
       else if (this.recognizer) {
+        console.log('[VOICE_DEBUG] Using fallback method to stop');
         this._stopFallbackRecognition();
       }
     } catch (error) {
-      console.error('Error stopping speech recognition:', error);
+      console.error('[VOICE_DEBUG] Error stopping speech recognition:', error.message, error.stack);
     } finally {
       this.isListening = false;
+      console.log('[VOICE_DEBUG] isListening set to false');
       
       // Explicitly trigger the onSpeechEnd event if it hasn't been triggered
       if (this.onSpeechEnd) {
+        console.log('[VOICE_DEBUG] Manually triggering onSpeechEnd event');
         this.onSpeechEnd();
       }
     }
   }
-  
-  /**
+    /**
    * Reset speech recognition - stops and restarts to ensure a clean state
    * @param {string} language - Language code for speech recognition (e.g., 'en-US')
    * @returns {Promise<void>}
    */
   async reset(language = 'en-US') {
+    console.log('[VOICE_DEBUG] Reset called with language:', language);
     try {
       // Stop current recognition if active
       if (this.isListening) {
+        console.log('[VOICE_DEBUG] Currently listening, stopping first');
         await this.stop();
+        console.log('[VOICE_DEBUG] Stop completed during reset');
+      } else {
+        console.log('[VOICE_DEBUG] Not currently listening, proceeding with reset');
       }
       
+      // Record pre-delay state for debugging
+      console.log('[VOICE_DEBUG] Pre-delay state - isInitialized:', this.isInitialized, 'isListening:', this.isListening);
+      
       // Short delay to ensure clean restart
+      console.log('[VOICE_DEBUG] Adding delay before restart');
       await new Promise(resolve => setTimeout(resolve, 200));
       
+      // Record post-delay state for debugging
+      console.log('[VOICE_DEBUG] Post-delay state - isInitialized:', this.isInitialized, 'isListening:', this.isListening);
+      
       // Start fresh
+      console.log('[VOICE_DEBUG] Starting recognition after reset');
       await this.start(language);
+      console.log('[VOICE_DEBUG] Reset completed successfully');
     } catch (error) {
-      console.error('Error resetting speech recognition:', error);
+      console.error('[VOICE_DEBUG] Error resetting speech recognition:', error.message, error.stack);
       if (this.onSpeechError) {
         this.onSpeechError({
           error: 'reset_error',

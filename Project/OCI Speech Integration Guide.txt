@@ -1,0 +1,247 @@
+# Integrating Oracle Cloud Speech to Text into a React Native Expo Web App
+
+**Date**: May 21, 2025
+
+## Overview
+
+This guide provides detailed instructions for integrating Oracle Cloud Infrastructure (OCI) Speech's real-time transcription feature into a React Native Expo web application. OCI Speech leverages Automatic Speech Recognition (ASR) to convert audio streams into text, ideal for applications such as live transcription or voice-driven interfaces. The integration involves setting up OCI credentials, installing the OCI Speech real-time TypeScript SDK, capturing audio using browser APIs, and streaming it to OCI's real-time speech service via WebSockets.
+
+**Key Points**:
+- OCI Speech supports real-time transcription for web applications.
+- The integration uses the OCI Speech real-time TypeScript SDK and WebSockets.
+- Audio capture is handled using browser APIs or libraries like `react-mic`.
+- Authentication requires secure handling, with OAuth tokens recommended for production.
+- The Netherlands region (eu-amsterdam-1) is supported for OCI Speech services.
+
+---
+
+## Prerequisites
+
+Before starting, ensure you have the following:
+
+- **OCI Account**: An active Oracle Cloud Infrastructure account with access to the Speech service in the eu-amsterdam-1 region.
+- **React Native Expo Setup**: A React Native project configured with Expo, compatible with web deployment.
+- **Development Knowledge**: Familiarity with JavaScript, React Native, WebSockets, and basic web audio APIs.
+- **Node.js and npm**: Installed for managing dependencies in your project.
+- **OCI Permissions**: Appropriate permissions to access the Speech service.
+
+---
+
+## Step 1: Set Up OCI Credentials and Permissions
+
+To use OCI Speech, configure user credentials and permissions in the OCI Console.
+
+1. **Create an OCI User and Group**:
+   - Log in to the [OCI Console](https://www.oracle.com/cloud/sign-in.html).
+   - Navigate to **Identity & Security > Users**.
+   - Create a new user or select an existing one.
+   - Create a group (e.g., `SpeechUsers`) and add the user to it.
+
+2. **Generate API Keys**:
+   - In the user’s profile, go to **API Keys** and generate a new key pair.
+   - Download the private key and note the public key fingerprint.
+   - Upload the public key to the user’s API Keys section in the OCI Console.
+
+3. **Create IAM Policies**:
+   - Navigate to **Identity & Security > Policies**.
+   - Create a policy in your compartment to allow the group to use the Speech service. Example policy statement:
+     ```
+     Allow group SpeechUsers to use ai-service-speech-family in compartment <your-compartment-name>
+     ```
+   - Ensure the policy grants access to necessary resources, such as Object Storage if storing audio files.
+
+4. **Obtain Configuration Details**:
+   - Note your tenancy OCID, user OCID, region (eu-amsterdam-1), and API key fingerprint.
+   - Create a configuration file (e.g., `~/.oci/config`) with the following format:
+     ```
+     [DEFAULT]
+     user=ocid1.user.oc1..<your-user-ocid>
+     fingerprint=<your-key-fingerprint>
+     tenancy=ocid1.tenancy.oc1..<your-tenancy-ocid>
+     region=eu-amsterdam-1
+     key_file=<path-to-your-private-key>
+     ```
+
+---
+
+## Step 2: Configure Your React Native Expo Project
+
+Ensure your React Native Expo project is set up for web deployment.
+
+1. **Initialize the Project**:
+   - If not already created, initialize a new Expo project:
+     ```bash
+     npx create-expo-app MySpeechApp
+     cd MySpeechApp
+     ```
+   - Ensure the project supports web by installing the web dependencies:
+     ```bash
+     npx expo install expo-web-browser
+     ```
+
+2. **Install the OCI Speech SDK**:
+   - Install the OCI Speech real-time TypeScript SDK:
+     ```bash
+     npm install @oracle/oci-ai-speech-realtime
+     ```
+   - This SDK is designed for real-time transcription and uses WebSockets, compatible with browser environments used by React Native for web.
+
+3. **Verify Web Compatibility**:
+   - Run your app in web mode to ensure compatibility:
+     ```bash
+     npx expo start --web
+     ```
+   - Open your browser to test the app at `http://localhost:8081`.
+
+---
+
+## Step 3: Configure Authentication
+
+OCI services require authentication. For web applications, direct use of private keys is insecure, so using a backend service or OAuth-based authentication is recommended. This guide provides a simplified client-side setup for demonstration, but production apps should implement secure token-based authentication.
+
+### Simplified Client-Side Authentication (For Testing Only)
+
+- Include OCI credentials in your app (not recommended for production):
+  ```javascript
+  const config = {
+    tenancyId: 'ocid1.tenancy.oc1..<your-tenancy-ocid>',
+    userId: 'ocid1.user.oc1..<your-user-ocid>',
+    fingerprint: '<your-key-fingerprint>',
+    privateKey: '-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----',
+    region: 'eu-amsterdam-1',
+  };
+  ```
+- **Security Note**: Avoid hardcoding credentials in client-side code. Use a backend service or OAuth tokens for production.
+
+### OAuth-Based Authentication (Recommended for Production)
+
+1. **Register a Confidential Application**:
+   - In the OCI Console, navigate to **Identity & Security > Identity Domains**.
+   - Register a new confidential application to obtain a **Client ID**, **Client Secret**, and **Scopes** for the Speech service.
+
+2. **Obtain an Access Token**:
+   - Use an OAuth library (e.g., `axios`) to request an access token:
+     ```javascript
+     import axios from 'axios';
+
+     async function getAccessToken(clientId, clientSecret) {
+       const response = await axios.post('https://idcs-<your-domain>.identity.oraclecloud.com/oauth2/v1/token', {
+         grant_type: 'client_credentials',
+         client_id: clientId,
+         client_secret: clientSecret,
+         scope: '<speech-service-scope>',
+       });
+       return response.data.access_token;
+     }
+     ```
+
+3. **Use the Token for WebSocket Authentication**:
+   - Include the access token in the WebSocket connection headers (specific to the SDK implementation).
+
+### Backend Proxy (Alternative for Production)
+
+- Deploy a server (e.g., Node.js with Express) to handle authentication and proxy WebSocket connections.
+- The server signs requests using the OCI SDK and forwards audio data to the OCI Speech service.
+
+---
+
+## Step 4: Capture Audio in the Web App
+
+Use the `react-mic` library to capture audio from the user's microphone.
+
+1. **Install react-mic**:
+   ```bash
+   npm install react-mic
+   ```
+
+2. **Create an Audio Capture Component**:
+   - Create a React component to handle audio recording:
+     ```javascript
+     import React, { useState } from 'react';
+     import { ReactMic } from 'react-mic';
+
+     function AudioCapture({ onAudioData }) {
+       const [isRecording, setIsRecording] = useState(false);
+
+       const onData = (recordedBlob) => {
+         onAudioData(recordedBlob); // Send audio chunks to WebSocket
+       };
+
+       const onStop = (recordedBlob) => {
+         console.log('Recording stopped:', recordedBlob);
+       };
+
+       return (
+         <div>
+           <ReactMic
+             record={isRecording}
+             className="sound-wave"
+             onStop={onStop}
+             onData={onData}
+             strokeColor="#000000"
+             backgroundColor="#FF4081"
+           />
+           <button onClick={() => setIsRecording(true)}>Start Recording</button>
+           <button onClick={() => setIsRecording(false)}>Stop Recording</button>
+         </div>
+       );
+     }
+
+     export default AudioCapture;
+     ```
+
+3. **Test Audio Capture**:
+   - Ensure the browser prompts for microphone access when recording starts.
+   - Verify that `onData` receives audio chunks as Blob objects.
+
+---
+
+## Step 5: Connect to OCI Speech Real-Time Service
+
+The OCI Speech real-time service uses WebSockets for streaming audio and receiving transcriptions. The TypeScript SDK simplifies this process.
+
+1. **Initialize the SDK**:
+   - Create a client instance with your configuration:
+     ```javascript
+     import { RealtimeSpeechClient } from '@oracle/oci-ai-speech-realtime';
+
+     const config = {
+       tenancyId: 'ocid1.tenancy.oc1..<your-tenancy-ocid>',
+       userId: 'ocid1.user.oc1..<your-user-ocid>',
+       fingerprint: '<your-key-fingerprint>',
+       privateKey: '-----BEGIN PRIVATE KEY-----...-----END PRIVATE KEY-----',
+       region: 'eu-amsterdam-1',
+     };
+
+     const client = new RealtimeSpeechClient(config);
+     ```
+
+2. **Connect to the WebSocket Endpoint**:
+   - Use the real-time endpoint for the Netherlands region:
+     ```javascript
+     const wsUrl = 'wss://realtime.aiservice.eu-amsterdam-1.oci.oraclecloud.com';
+     client.connect(wsUrl).then(() => {
+       console.log('Connected to OCI Speech WebSocket');
+     }).catch((error) => {
+       console.error('Connection failed:', error);
+     });
+     ```
+
+3. **Authenticate the Connection**:
+   - If using OAuth, include the access token in the WebSocket headers (refer to SDK documentation for specifics).
+   - Example (hypothetical, as SDK specifics may vary):
+     ```javascript
+     const token = await getAccessToken(clientId, clientSecret);
+     client.connect(wsUrl, { headers: { Authorization: `Bearer ${token}` } });
+     ```
+
+---
+
+## Step 6: Stream Audio Data
+
+Send audio chunks from the `react-mic` `onData` callback to the WebSocket.
+
+1. **Send Audio Chunks**:
+   - Modify the `AudioCapture` component to send audio data:
+     ```javascript
+     const onData = (recorded

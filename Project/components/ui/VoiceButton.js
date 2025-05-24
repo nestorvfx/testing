@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TouchableOpacity, Text, StyleSheet, View, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import VoiceService from '../../services/voiceService';
+import VoiceService from '../../services/ociVoiceService';
 import { testMicrophone, fixAndroidAudioIssues } from '../../services/androidAudioFix';
 
 // Simple console logger - reduced logging
@@ -40,7 +40,8 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   // Track errors and cooldown
   const errorCountRef = useRef(0);
   const cooldownTimerRef = useRef(null);
-  const consecutiveErrorsRef = useRef(0);  // Add more sophisticated de-duplication for speech results
+  const consecutiveErrorsRef = useRef(0);  
+  // Add more sophisticated de-duplication for speech results
   const lastResultTimeRef = useRef(0);
   const lastResultTextRef = useRef('');
   const resultDedupeTimeMs = 5000; // Increase to 5 seconds for better de-duplication
@@ -52,14 +53,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     processingFinal: false,
     pendingResults: [] // Add this to store multiple pending results
   }); 
-  const resultWaitTimeMs = 1200; // Increased wait time before processing a final result
-  // Add silent period detection with different timers for brief silence vs long silence
-  const lastActivityTimeRef = useRef(Date.now());
-  const silenceTimerRef = useRef(null);
-  const briefSilenceTimerRef = useRef(null);
-  const silenceDurationMs = 20000; // 20 seconds of silence before pausing (increased from 10s)
-  const briefSilenceDurationMs = 1500; // 3 seconds of silence to finalize speech (increased from 2s)
-    // Flag for restart after error (rather than silence)
+  // Flag for restart after error
   const isErrorRestartRef = useRef(false);
   
   // Initialize pending results tracking
@@ -95,20 +89,26 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       cleanupVoiceService();
     };
   }, []);
-    // Effect to handle setting up the voice service
+  // Effect to handle setting up the voice service
   useEffect(() => {
     logDebug('Setting up voice recognition service');
+    console.log('[VOICE_BUTTON_DEBUG] isActive changed to:', isActive, 'isListening:', isListening);
     
     if (isActive) {
+      console.log('[VOICE_BUTTON_DEBUG] Starting voice recognition due to isActive=true');
       startVoiceRecognition();
     } else {
       // Only stop if we were already listening - don't disable unnecessarily
       if (isListening) {
+        console.log('[VOICE_BUTTON_DEBUG] Stopping voice recognition due to isActive=false');
         stopVoiceRecognition();
+      } else {
+        console.log('[VOICE_BUTTON_DEBUG] Not listening, no need to stop');
       }
     }
     
     return () => {
+      console.log('[VOICE_BUTTON_DEBUG] Cleanup effect running');
       cleanupVoiceService();
     };
   }, [isActive]);
@@ -120,10 +120,6 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         await VoiceService.stop();
         setIsListening(false);
       }
-      
-      // Stop all timers
-      stopSilenceTimer();
-      stopBriefSilenceTimer();
       
       logDebug('Cleanup: destroying voice service');
       // Don't call destroy() as it might interfere with future instances
@@ -152,16 +148,21 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       onToggleActive();
       // Voice recognition will be started by the effect
     }
-  };
-  // Start voice recognition
+  };  // Start voice recognition
   const startVoiceRecognition = async () => {
+    console.log('[VOICE_BUTTON_DEBUG] startVoiceRecognition called. Current state:', {
+      isListening, inCooldown, isAnalyzing
+    });
+    
     if (isListening || inCooldown || isAnalyzing) {
+      console.log('[VOICE_BUTTON_DEBUG] Aborting start - already listening, in cooldown, or analyzing');
       return;
     }
     
     try {
       // Reset state for new session
       setErrorMessage('');
+      console.log('[VOICE_BUTTON_DEBUG] Resetting speech state for new session');
       
       // Always reset the speech text when starting a new voice recognition session
       // This ensures we don't have stale text from a previous session
@@ -169,7 +170,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       
       setIsPaused(false);
       
-      // Reset the silence-processed flag and pending results for a fresh start
+      // Reset the speech processing flags and pending results for a fresh start
       pendingResultsRef.current.silenceProcessed = false;
       pendingResultsRef.current.pendingResults = [];
       pendingResultsRef.current.processingFinal = false;
@@ -184,21 +185,22 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       isErrorRestartRef.current = false;
       
       // Set up event handlers
+      console.log('[VOICE_BUTTON_DEBUG] Setting up voice event handlers');
       VoiceService.onSpeechStart = handleSpeechStart;
       VoiceService.onSpeechEnd = handleSpeechEnd;
       VoiceService.onSpeechResults = handleSpeechResults;
       VoiceService.onSpeechPartialResults = handleSpeechPartialResults;
       VoiceService.onSpeechError = handleSpeechError;
       VoiceService.onSpeechVolumeChanged = handleVolumeChanged;
-      
+        
       // Start listening
+      console.log('[VOICE_BUTTON_DEBUG] Calling VoiceService.start()');
       await VoiceService.start('en-US');
+      console.log('[VOICE_BUTTON_DEBUG] VoiceService.start() completed successfully');
       setIsListening(true);
-      
-      // Reset silence detection
-      lastActivityTimeRef.current = Date.now();
-      startSilenceTimer();
+      console.log('[VOICE_BUTTON_DEBUG] isListening set to true');
     } catch (error) {
+      console.error('[VOICE_BUTTON_DEBUG] Error starting voice recognition:', error.message, error.stack);
       handleSpeechError({
         error: 'start_error',
         message: error.message
@@ -207,50 +209,57 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   };
   // Stop voice recognition
   const stopVoiceRecognition = async () => {
+    console.log('[VOICE_BUTTON_DEBUG] stopVoiceRecognition called. Current isListening:', isListening);
+    if (!isListening) {
+      console.log('[VOICE_BUTTON_DEBUG] Not listening, nothing to stop');
+      return;
+    }
+    
     try {
+      console.log('[VOICE_BUTTON_DEBUG] Calling VoiceService.stop()');
       await VoiceService.stop();
+      console.log('[VOICE_BUTTON_DEBUG] VoiceService.stop() completed successfully');
     } catch (error) {
+      console.error('[VOICE_BUTTON_DEBUG] Error stopping voice recognition:', error.message, error.stack);
       // Ignore stop errors
     } finally {
+      console.log('[VOICE_BUTTON_DEBUG] Setting isListening to false and cleaning up state');
       setIsListening(false);
       setVolume(0);
-      stopSilenceTimer();
-      stopBriefSilenceTimer();
       
       // Clear any pending speech results
       if (pendingResultsRef.current && pendingResultsRef.current.timeout) {
         clearTimeout(pendingResultsRef.current.timeout);
+        console.log('[VOICE_BUTTON_DEBUG] Cleared pending results timeout');
       }
     }
   };
-  // Pause voice recognition after silence
+  // Pause voice recognition
   const pauseVoiceRecognition = async () => {
     if (!isListening) {
       return;
     }
     
     try {
-      logInfo('Pausing voice recognition due to long silence');
+      logInfo('Pausing voice recognition');
       
       // Process any pending speech before pausing
       // Check if we have any accumulated text that hasn't been processed
       if (speechTextRef.current && speechTextRef.current.length > 3 && !pendingResultsRef.current.silenceProcessed) {
         logInfo(`Processing speech before pausing: "${speechTextRef.current}"`);
-        finalizeSpeechAfterSilence();
+        processSpeechResult(speechTextRef.current);
       }
       // Or if we have any pending results that haven't been processed
       else if (pendingResultsRef.current.pendingResults && 
                pendingResultsRef.current.pendingResults.length > 0 &&
                !pendingResultsRef.current.silenceProcessed) {
-        finalizeSpeechAfterSilence();
+        processSpeechResult(pendingResultsRef.current.pendingResults[pendingResultsRef.current.pendingResults.length - 1].text);
       }
       
       await VoiceService.stop();
       setIsPaused(true);
       setIsListening(false);
       setVolume(0);
-      stopSilenceTimer();
-      stopBriefSilenceTimer();
     } catch (error) {
       // Ignore pause errors
     }
@@ -284,10 +293,6 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       
       // Call onToggleActive AFTER state is updated to ensure proper sequence
       onToggleActive();
-      
-      // Reset silence detection
-      lastActivityTimeRef.current = Date.now();
-      startSilenceTimer();
     } catch (error) {
       handleSpeechError({
         error: 'resume_error',
@@ -295,112 +300,30 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       });
     }
   };
-  // Start silence timer with more intelligent handling
-  const startSilenceTimer = () => {
-    stopSilenceTimer();
-    silenceTimerRef.current = setTimeout(() => {
-      // Check if there was any voice activity or results during the silence period
-      const currentTime = Date.now();
-      const timeSinceLastActivity = currentTime - lastActivityTimeRef.current;
-      
-      // If we had no activity for the full silence duration
-      if (timeSinceLastActivity >= silenceDurationMs) {
-        // Also check if we have any pending speech results that were never processed
-        const hasPendingResults = pendingResultsRef.current.pendingResults && 
-                                 pendingResultsRef.current.pendingResults.length > 0;
-                                 
-        // Process any pending results before pausing
-        if (hasPendingResults && !pendingResultsRef.current.silenceProcessed) {
-          finalizeSpeechAfterSilence();
-        }
-        
-        logInfo('Detected long silence period, pausing voice recognition');
-        pauseVoiceRecognition();
-      } else {
-        // If there was some activity, extend the timer
-        startSilenceTimer();
-      }
-    }, silenceDurationMs);
-  };
-  
-  // Stop silence timer
-  const stopSilenceTimer = () => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-  };
-  
-  // Start brief silence timer for speech finalization
-  const startBriefSilenceTimer = () => {
-    stopBriefSilenceTimer();
-    briefSilenceTimerRef.current = setTimeout(() => {
-      logInfo('Detected brief silence, finalizing speech results');
-      finalizeSpeechAfterSilence();
-    }, briefSilenceDurationMs);
-  };
-  
-  // Stop brief silence timer
-  const stopBriefSilenceTimer = () => {
-    if (briefSilenceTimerRef.current) {
-      clearTimeout(briefSilenceTimerRef.current);
-      briefSilenceTimerRef.current = null;
-    }
-  };  // Finalize speech after a brief silence period
-  const finalizeSpeechAfterSilence = () => {
-    // Get all pending results
-    const pendingResults = pendingResultsRef.current.pendingResults;
+  // Add a dedicated function to process speech results immediately
+  const processSpeechResult = (text) => {
+    console.log('[VOICE_BUTTON_DEBUG] processSpeechResult called with text:', text?.substring(0, 30) + (text?.length > 30 ? '...' : ''));
     
-    // Mark that processing has been done to prevent duplicates
+    // Mark as processed to avoid duplicate processing
     pendingResultsRef.current.silenceProcessed = true;
     
-    if (pendingResults.length > 0) {
-      logInfo(`Finalizing ${pendingResults.length} pending speech result(s) after brief silence`);
+    // Process the result immediately
+    if (onSpeechResult && text && text.length > 3) {
+      logInfo(`Processing speech result immediately: "${text}"`);
+      console.log('[VOICE_BUTTON_DEBUG] Calling onSpeechResult with finalized=true');
+      onSpeechResult(text, true, volume);
       
-      // Only process the last one - older ones should have been processed already
-      const lastResult = pendingResults[pendingResults.length - 1];
-      if (lastResult && !lastResult.processed) {
-        // Mark as processed to avoid duplicate processing
-        lastResult.processed = true;
-        
-        // Process the result immediately
-        if (onSpeechResult) {
-          logInfo(`Processing finalized speech result: "${lastResult.text}"`);
-          onSpeechResult(lastResult.text, true, volume);
-          
-          // Reset speech text and silenceProcessed flag after onSpeechResult is called
-          // This allows new speech to be recognized immediately after capture
-          resetSpeechState();
-        }
-      }
-      
-      // Clear the pending results after processing
-      pendingResultsRef.current.pendingResults = [];
+      // Reset speech state after processing
+      resetSpeechState();
     } else {
-      // If no pending results, check if we have any accumulated text to process
-      const accumulatedText = speechTextRef.current;
-      
-      // Only finalize if we have meaningful text and it hasn't been finalized yet
-      if (accumulatedText && accumulatedText.length > 3) {
-        logInfo(`Finalizing accumulated speech after brief silence: "${accumulatedText}"`);
-        
-        // Process the result
-        if (onSpeechResult) {
-          onSpeechResult(accumulatedText, true, volume);
-          
-          // Reset speech text and silenceProcessed flag after onSpeechResult is called
-          resetSpeechState();
-        }
-      } else {
-        // Important: Even if no text to process, reset the silenceProcessed flag
-        // to allow new speech to be recognized
-        pendingResultsRef.current.silenceProcessed = false;
-      }
+      console.log('[VOICE_BUTTON_DEBUG] Text too short or onSpeechResult not defined');
+      pendingResultsRef.current.silenceProcessed = false;
     }
   };
   
-  // Add a dedicated function to reset speech state
+  // Reset speech state
   const resetSpeechState = () => {
+    console.log('[VOICE_BUTTON_DEBUG] resetSpeechState called - clearing all speech recognition state');
     // Reset all the speech-related state to handle new input
     speechTextRef.current = '';
     pendingResultsRef.current.silenceProcessed = false;
@@ -408,10 +331,14 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     lastResultTextRef.current = '';
     
     // Clear any pending results
+    const pendingResultsCount = pendingResultsRef.current.pendingResults?.length || 0;
     pendingResultsRef.current.pendingResults = [];
+    console.log('[VOICE_BUTTON_DEBUG] Cleared', pendingResultsCount, 'pending results');
     
     // Also reset the recent results array used for deduplication
+    const recentResultsCount = pendingResultsRef.current.recent?.length || 0;
     pendingResultsRef.current.recent = [];
+    console.log('[VOICE_BUTTON_DEBUG] Cleared', recentResultsCount, 'recent results used for deduplication');
     
     logInfo('Reset speech recognition state for new input');
   };
@@ -496,25 +423,26 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     // Event Handlers
   const handleSpeechStart = (e) => {
     logEvent('onSpeechStart');
+    console.log('[VOICE_BUTTON_DEBUG] Speech start event received');
     setIsListening(true);
-    lastActivityTimeRef.current = Date.now();
-    startSilenceTimer();
-    stopBriefSilenceTimer(); // Stop brief silence timer when speech starts
     
     // Force reset the speech state when new speech starts
     if (pendingResultsRef.current.silenceProcessed) {
       logInfo('Forcing reset of silenceProcessed flag on new speech');
+      console.log('[VOICE_BUTTON_DEBUG] Resetting silenceProcessed flag');
       pendingResultsRef.current.silenceProcessed = false;
     }
     
     // Clear the speech text when new speech starts to prevent showing old text
     if (speechTextRef.current && speechTextRef.current.length > 0) {
       logInfo('Clearing previous speech text as new speech begins');
+      console.log('[VOICE_BUTTON_DEBUG] Clearing previous speech text:', speechTextRef.current);
       speechTextRef.current = '';
     }
     
     // Also clear any pending results
     if (pendingResultsRef.current.pendingResults && pendingResultsRef.current.pendingResults.length > 0) {
+      console.log('[VOICE_BUTTON_DEBUG] Clearing pending results:', pendingResultsRef.current.pendingResults.length);
       pendingResultsRef.current.pendingResults = [];
     }
     
@@ -525,14 +453,20 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
   
   const handleSpeechEnd = (e) => {
     logEvent('onSpeechEnd');
+    console.log('[VOICE_BUTTON_DEBUG] Speech end event received');
     
     // Don't immediately stop listening - this allows for pauses between phrases
     // Speech end might just be a pause between sentences
     setVolume(0);
     
-    // Start brief silence timer to detect end of speech segment
-    startBriefSilenceTimer();
-  };  const handleSpeechResults = (results) => {
+    // Process any accumulated text when speech ends
+    if (speechTextRef.current && speechTextRef.current.length > 3 && !pendingResultsRef.current.silenceProcessed) {
+      console.log('[VOICE_BUTTON_DEBUG] Processing accumulated text on speech end');
+      processSpeechResult(speechTextRef.current);
+    }
+  };  
+  
+  const handleSpeechResults = (results) => {
     // Ensure results exist and have values
     if (!results || !results.value || results.value.length === 0) {
       logWarn('Received empty speech results');
@@ -545,12 +479,7 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     // Update ref
     speechTextRef.current = recognizedText;
     
-    // Update activity timestamp and reset silence timers
-    lastActivityTimeRef.current = Date.now();
-    startSilenceTimer();
-    
-    // For final results, we don't immediately process them
-    // Instead, we'll wait for a brief silence before finalizing
+    // For final results, process them immediately
     if (results.isFinal) {
       logInfo(`Received final speech result: "${recognizedText}"`);
       
@@ -568,22 +497,12 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
         return;
       }
       
-      // Add to pending results queue instead of immediately processing
-      const newResult = {
-        text: recognizedText,
-        timestamp: currentTime,
-        processed: false
-      };
-      
-      // Add to the queue of pending results
-      pendingResultsRef.current.pendingResults.push(newResult);
-      
       // Update tracking variables
       lastResultTimeRef.current = currentTime;
       lastResultTextRef.current = recognizedText;
       
-      // Start brief silence timer to finalize after a pause in speech
-      startBriefSilenceTimer();
+      // Process the final result immediately
+      processSpeechResult(recognizedText);
     }
   };
   
@@ -694,11 +613,6 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
     
     // Update ref
     speechTextRef.current = partialText;
-    
-    // Reset silence detection (this is speech activity)
-    lastActivityTimeRef.current = Date.now();
-    startSilenceTimer();
-    stopBriefSilenceTimer(); // Reset brief silence timer because we have activity
     
     // If we have text and a callback, send the partial result
     // But only if it's substantially different from the last partial text
@@ -839,28 +753,14 @@ const VoiceButton = ({ onSpeechResult, isActive, onToggleActive, isAnalyzing = f
       if (cooldownTimerRef.current) {
         clearTimeout(cooldownTimerRef.current);
       }
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-      }
-      if (briefSilenceTimerRef.current) {
-        clearTimeout(briefSilenceTimerRef.current);
-      }
       if (pendingResultsRef.current && pendingResultsRef.current.timeout) {
         clearTimeout(pendingResultsRef.current.timeout);
       }
     };
   }, []);
-    // Effect to prevent silence timer during analysis
+    // Effect to prevent interruption during analysis
   useEffect(() => {
-    if (isAnalyzing) {
-      // Stop silence detection during analysis to prevent interruption
-      stopSilenceTimer();
-      stopBriefSilenceTimer();
-    } else if (isListening) {
-      // Restart silence detection when analysis completes
-      lastActivityTimeRef.current = Date.now();
-      startSilenceTimer();
-    }
+    // No special handling needed as silence detection is removed
   }, [isAnalyzing, isListening]);
     // Get status color and icon
   let statusColor = '#666';
