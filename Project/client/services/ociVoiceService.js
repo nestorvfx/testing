@@ -40,24 +40,16 @@ class OCIVoiceService {
   }
   /**
    * Initialize the voice service by setting up audio context and permissions
-   */
-  async initialize() {
+   */  async initialize() {
     if (this.isInitialized) {
       return;
     }
 
-    try {
-      console.log('Initializing OCI Voice Service...');
-        // Handle platform-specific initialization
-      if (Platform.OS === 'android') {
-        // For Android, request microphone permission first
-        console.log('Using Android native module for initialization');
+    try {        if (Platform.OS === 'android') {
         const hasPermission = await requestMicrophonePermission();
         if (!hasPermission) {
           throw new Error('Microphone permission is required for speech recognition');
         }
-        console.log('Microphone permission granted');
-        // Native module will be initialized when startListening is called
       } else if (Platform.OS === 'ios') {
         // For iOS, use Expo Audio API
         const { status } = await Audio.requestPermissionsAsync();
@@ -71,14 +63,11 @@ class OCIVoiceService {
           shouldDuckAndroid: true,
           playThroughEarpieceAndroid: false,
           staysActiveInBackground: true,
-        });
-      } else {
+        });      } else {
         // For Web, permissions are handled by the browser
-        console.log('Web platform - permissions will be requested by browser');
       }
 
       this.isInitialized = true;
-      console.log('OCI Voice Service initialized successfully');
     } catch (error) {
       console.error('Failed to initialize OCI Voice Service:', error);
       throw error;
@@ -86,11 +75,8 @@ class OCIVoiceService {
   }
   /**
    * Get authentication token from the server
-   */
-  async getAuthToken() {
+   */  async getAuthToken() {
     try {
-      console.log('Fetching authentication token...');
-      
       const response = await fetch(`${AUTH_SERVER_URL}/authenticate`, {
         method: 'GET',
         headers: {
@@ -106,18 +92,11 @@ class OCIVoiceService {
       
       if (!data.token) {
         throw new Error('No token received from authentication server');
-      }
-
-      this.sessionToken = data.token;
+      }      this.sessionToken = data.token;
       this.sessionId = data.sessionId;
       this.compartmentId = data.compartmentId;
-      // Set expiration time (tokens typically last 1 hour, be conservative)
-      this.tokenExpiresAt = Date.now() + (55 * 60 * 1000); // 55 minutes
+      this.tokenExpiresAt = Date.now() + (55 * 60 * 1000);
       
-      console.log('Authentication token obtained successfully', {
-        sessionId: this.sessionId,
-        compartmentId: this.compartmentId
-      });
       return data.token;
     } catch (error) {
       console.error('Failed to get authentication token:', error);
@@ -153,10 +132,8 @@ class OCIVoiceService {
 
   /**
    * Ensure we have a valid token, refreshing if necessary
-   */
-  async ensureValidToken() {
+   */  async ensureValidToken() {
     if (!this.isTokenValid()) {
-      console.log('Token expired or not available, getting fresh token...');
       await this.getAuthToken();
       if (!this.region) {
         await this.getRegion();
@@ -188,48 +165,36 @@ class OCIVoiceService {
         'languageCode': 'en-US',
         'modelDomain': 'GENERIC',
         'punctuation': 'NONE',
-        'encoding': 'audio/raw;rate=16000'
-      });
+        'encoding': 'audio/raw;rate=16000'      });
 
       const websocketUrl = `${baseUrl}?${params.toString()}`;
-      console.log('Connecting to OCI Speech WebSocket:', websocketUrl);
 
-      // Create WebSocket connection
       this.webSocket = new WebSocket(websocketUrl);
 
-      // Set up event handlers
       this.webSocket.onopen = () => {
-        console.log('WebSocket connected, sending authentication...');        // Send authentication message
         const authMessage = {
           authenticationType: "TOKEN",
           token: this.sessionToken,
           compartmentId: this.compartmentId
         };
-        
-        this.webSocket.send(JSON.stringify(authMessage));
+          this.webSocket.send(JSON.stringify(authMessage));
       };
 
       this.webSocket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('Received WebSocket message:', message);
 
           if (message.event === "CONNECT") {
-            console.log('OCI Speech authentication successful');
             this.startAudioCapture();
           } else if (message.event === "RESULT") {
-            this.handleTranscriptionResult(message);
-          } else if (message.event === "ERROR") {
-            console.error('OCI Speech service error:', message);
+            this.handleTranscriptionResult(message);          } else if (message.event === "ERROR") {
             if (this.onSpeechError) {
               this.onSpeechError({
                 error: 'speech_service_error',
                 message: message.message || 'Speech service error'
               });
             }
-          }
-        } catch (err) {
-          console.error('Error parsing WebSocket message:', err);
+          }        } catch (err) {
           if (this.onSpeechError) {
             this.onSpeechError({
               error: 'message_parse_error',
@@ -237,27 +202,20 @@ class OCIVoiceService {
             });
           }
         }
-      };
-
-      this.webSocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      };      this.webSocket.onerror = (error) => {
         if (this.onSpeechError) {
           this.onSpeechError({
             error: 'websocket_error',
             message: 'WebSocket connection error'
           });
         }
-      };
-
-      this.webSocket.onclose = (event) => {
-        console.log('WebSocket closed:', event.code, event.reason);
+      };      this.webSocket.onclose = (event) => {
         this.isListening = false;
         
         if (this.onSpeechEnd) {
           this.onSpeechEnd();
         }
-        
-        if (event.code !== 1000) { // Not a normal closure
+          if (event.code !== 1000) {
           if (this.onSpeechError) {
             this.onSpeechError({
               error: 'connection_closed',
@@ -265,10 +223,7 @@ class OCIVoiceService {
             });
           }
         }
-      };
-
-    } catch (error) {
-      console.error('Error setting up WebSocket:', error);
+      };    } catch (error) {
       throw error;
     }
   }
@@ -280,17 +235,13 @@ class OCIVoiceService {
     const transcriptions = message.transcriptions;
     if (transcriptions && transcriptions.length > 0) {
       const result = transcriptions[0];
-      
-      if (result.isFinal) {
-        console.log('Final transcription result:', result.transcription);
+        if (result.isFinal) {
         if (this.onSpeechResults) {
           this.onSpeechResults({
             value: [result.transcription],
             isFinal: true
           });
-        }
-      } else {
-        console.log('Partial transcription result:', result.transcription);
+        }      } else {
         if (this.onSpeechPartialResults) {
           this.onSpeechPartialResults({
             value: [result.transcription],
@@ -305,9 +256,7 @@ class OCIVoiceService {
    * Set up audio capture for web platform
    */
   async startAudioCapture() {
-    try {
-      if (Platform.OS !== 'web') {
-        console.log('Audio capture not implemented for this platform');
+    try {      if (Platform.OS !== 'web') {
         this.isListening = true;
         if (this.onSpeechStart) {
           this.onSpeechStart();

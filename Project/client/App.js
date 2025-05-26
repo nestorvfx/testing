@@ -160,22 +160,13 @@ export default function App() {
   
   // Define processVoiceCapture first, before it's used in handleSpeechResult
   const processVoiceCapture = useCallback(async (text) => {
-    console.log('[APP_DEBUG] processVoiceCapture called with text:', text?.substring(0, 30) + (text?.length > 30 ? '...' : ''));
-    
-    // Prevent duplicate processing of the same prompt
     if (processedVoicePromptsRef.current.has(text)) {
-      console.log('[APP_DEBUG] Duplicate voice prompt detected, ignoring:', text);
       return;
     }
     
-    // Don't proceed if camera isn't ready
     if (!cameraRef.current) {
-      console.log('[APP_DEBUG] Camera ref not ready, cannot capture');
       return;
     }
-    
-    console.log('[APP_DEBUG] Voice capture starting: captureDisabled =', captureDisabled);
-    
     // Mark this prompt as processed to prevent duplicates
     processedVoicePromptsRef.current.add(text);
     
@@ -260,14 +251,12 @@ export default function App() {
             // Voice-prompted analyses get highest priority
             await analyzeImages([capture], PRIORITY.HIGH);
           } catch (err) {
-            console.error('Analysis error:', err);
+            // Analysis error handled silently for production
           }
         }, 100);
       }
     } catch (err) {
-      console.error('[APP_DEBUG] Error during direct camera capture:', err);
-      // Log more detailed error info
-      if (err.message) console.error(`[APP_DEBUG] Capture error: ${err.message}`);
+      // Error handling for production - don't expose detailed errors
     } finally {
       // Reset the processing flag to allow text updates again
       setTimeout(() => {
@@ -280,11 +269,10 @@ export default function App() {
       }, 10000); // Increased from 5s to 10s for better duplicate prevention
       
       // Allow new captures sooner
-      const captureTimerDelay = 1000; // 1 second delay
-      console.log('[APP_DEBUG] Setting timer to re-enable captures after', captureTimerDelay, 'ms');
+      const captureTimerDelay = 1000;
       setTimeout(() => {
         setCaptureDisabled(false);
-      }, captureTimerDelay); // 1 second to prevent rapid captures
+      }, captureTimerDelay);
     }
   }, [cameraRef, handleNewImage, analyzeImages, setPendingAnalysisCount]);
   
@@ -354,8 +342,7 @@ export default function App() {
             // Use PRIORITY.HIGH for immediate analysis
             await analyzeImages([photoWithPrompt], PRIORITY.HIGH);
           } catch (error) {
-            console.error('Immediate analysis error:', error);
-            // Handle any cleanup needed
+            // Handle immediate analysis error silently for production
           }
         }, 50); // Small delay to ensure UI responsiveness
       }
@@ -367,8 +354,7 @@ export default function App() {
       
       return photoWithPrompt;
     } catch (error) {
-      console.error('Error capturing photo:', error);
-      setCaptureDisabled(false); // Also re-enable on error
+      setCaptureDisabled(false);
       throw error;
     } 
   }, [cameraReady, capturePhoto, handleNewImage, isImmediateAnalysisActive, analyzeImages, setPendingAnalysisCount]);
@@ -424,7 +410,6 @@ export default function App() {
       // Pass the STABLE copy of captures to avoid state changes during analysis
       await analyzeImages(capturesCopy, PRIORITY.NORMAL);
     } catch (error) {
-      console.error('Analysis error:', error);
       setCameraError(new Error('Failed to analyze images: ' + error.message));
       
       // Reset sent statuses on critical error
@@ -462,11 +447,7 @@ export default function App() {
 
   // Handle speech recognition result - now defined after processVoiceCapture
   const handleSpeechResult = useCallback((text, isFinal, volume) => {
-    console.log('[APP_DEBUG] handleSpeechResult called: text length =', text?.length || 0, 'isFinal =', isFinal);
-    
-    // Don't update display text if we're currently processing a voice capture
     if (isProcessingVoiceCaptureRef.current) {
-      console.log('[APP_DEBUG] Voice capture in progress, ignoring speech result updates');
       return;
     }
     
@@ -501,36 +482,24 @@ export default function App() {
       // If we had a recent final result, check similarity
       if (timeSinceLastFinal < 2000 && lastFinalResultRef.current) { // 2 second window
         const similarity = calculateTextSimilarity(text, lastFinalResultRef.current);
-        if (similarity > 0.8) { // 80% similarity threshold
-          console.log('[APP_DEBUG] Ignoring similar final result:', text, 'vs', lastFinalResultRef.current, 'similarity:', similarity);
+        if (similarity > 0.8) {
           return;
         }
       }
       
       // Check if we haven't already processed this exact text
       if (!processedVoicePromptsRef.current.has(text)) {
-        console.log('[APP_DEBUG] Processing speech result:', text);
-        
-        // Update tracking
         lastFinalResultRef.current = text;
         finalResultTimerRef.current = currentTime;
         
-        // Check if capture is in progress
         if (captureDisabled) {
-          console.log('[APP_DEBUG] Capture currently disabled, queueing for later processing');
-          // Queue this capture for processing after current one completes
           setTimeout(() => {
-            console.log('[APP_DEBUG] Processing queued speech capture after 1s delay');
             processVoiceCapture(text);
           }, 1000);
           return;
         }
         
-        console.log('[APP_DEBUG] Immediately processing voice capture');
-        // Process the capture immediately if not disabled
         processVoiceCapture(text);
-      } else {
-        console.log('[APP_DEBUG] Already processed this text:', text);
       }
     }
   }, [processVoiceCapture, captureDisabled]);
@@ -604,7 +573,6 @@ export default function App() {
         );
       }
     } catch (error) {
-      console.error("Error during deep analysis:", error);
       Alert.alert("Analysis Error", "Failed to perform deep analysis. Please try again.");
     } finally {
       setIsDeepAnalyzing(false);
@@ -635,7 +603,6 @@ export default function App() {
         );
       }
     } catch (error) {
-      console.error("Error during deep analysis:", error);
       Alert.alert("Analysis Error", "Failed to perform deep analysis. Please try again.");
     } finally {
       setIsDeepAnalyzing(false);
@@ -788,9 +755,6 @@ export default function App() {
         });
       },
       onError: (error, failedImage) => {
-        console.error("[Analysis Debug] Analysis error:", error);
-        
-        // If we have a specific image that failed
         if (failedImage) {
           
           
@@ -883,7 +847,6 @@ export default function App() {
             onVolumeChange={handleVolumeChange}
             onListeningStateChange={handleListeningStateChange}
             onError={(error) => {
-              console.error('Voice error:', error);
               setCameraError(error);
             }}
           />

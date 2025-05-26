@@ -3,11 +3,9 @@ import * as FileSystem from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { analysisQueue, PRIORITY } from './analysisQueue';
 
-// Constants for API interaction
 const API_URL = 'https://api.perplexity.ai/chat/completions';
-const API_KEY = process.env.EXPO_PUBLIC_PERPLEXITY_API_KEY || 'YOUR_PERPLEXITY_API_KEY_HERE'; // Set in environment variables
+const API_KEY = process.env.EXPO_PUBLIC_PERPLEXITY_API_KEY || 'YOUR_PERPLEXITY_API_KEY_HERE';
 
-// Validate API key on service initialization
 const validateAPIKey = () => {
   if (!API_KEY || API_KEY === 'YOUR_PERPLEXITY_API_KEY_HERE') {
     throw new Error('Perplexity API key not configured. Please set EXPO_PUBLIC_PERPLEXITY_API_KEY in your environment variables.');
@@ -22,15 +20,12 @@ const validateAPIKey = () => {
   }
 };
 
-// Initialize and validate
 try {
   validateAPIKey();
-  console.log('Perplexity API configuration validated successfully');
 } catch (error) {
   console.error('Perplexity API configuration error:', error.message);
 }
 
-// Callbacks object to handle analysis updates
 const analysisEventHandlers = {
   onAnalysisStart: null,
   onAnalysisComplete: null,
@@ -39,13 +34,11 @@ const analysisEventHandlers = {
   onError: null
 };
 
-// Register callbacks for analysis events
 export const registerAnalysisEventHandlers = (handlers = {}) => {
   Object.assign(analysisEventHandlers, handlers);
 };
 
-// Define batch size for processing images
-const BATCH_SIZE = 10; // Process 10 images at a time for more efficient batch processing
+const BATCH_SIZE = 5;
 
 /**
  * Processes images through Perplexity API for analysis
@@ -349,15 +342,10 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
     const isMultipleImages = Array.isArray(base64Images);
     const images = isMultipleImages ? base64Images : [base64Images];
     const prompts = Array.isArray(userPrompts) ? userPrompts : [userPrompts];
-    
-    // Process each image and get its analysis
-    
+      // Process each image and get its analysis
     const analysisResults = await Promise.all(images.map(async (base64Image, index) => {
-      // Get prompt for this image (use corresponding prompt if available, otherwise use default)
       const userPrompt = prompts[index] || prompts[0] || "";
-      
-      // Add a delay between requests if processing multiple images
-      if (index > 0) {
+        if (index > 0) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
@@ -389,7 +377,8 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
         stream: false
       };
       
-      let timeoutId;      try {
+      let timeoutId;
+      try {
         // Validate API key before each request
         if (!API_KEY || API_KEY === 'YOUR_PERPLEXITY_API_KEY_HERE') {
           throw new Error('API key not configured');
@@ -400,12 +389,11 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
         timeoutId = setTimeout(() => controller.abort(), 45000); // 45-second timeout
 
         const response = await fetch(API_URL, {
-          method: 'POST',
-          headers: {
+          method: 'POST',          headers: {
             'Authorization': `Bearer ${API_KEY}`,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'User-Agent': 'PerplexitySceneCapture/1.0.0'
+            'User-Agent': 'PhotoAndAnalyze/1.0.0'
           },
           body: JSON.stringify(payload),
           signal: controller.signal
@@ -443,11 +431,7 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
         if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
           throw new Error('Invalid response format from API');
         }
-        
-        // Log the raw API response for debugging if needed
-        if (__DEV__) {
-          
-        }
+  
         
         // Get the text content from response
         const analysisText = data.choices[0].message.content;

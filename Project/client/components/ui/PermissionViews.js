@@ -58,7 +58,7 @@ export const DeniedPermissionView = ({ cameraError, retryPermissions }) => (
         <Text style={styles.instructionsTitle}>How to enable permissions:</Text>
         <Text style={styles.instructionText}>1. Go to your device Settings</Text>
         <Text style={styles.instructionText}>2. Find and tap on "Apps" or "Applications"</Text>
-        <Text style={styles.instructionText}>3. Find "PerplexitySceneCapture"</Text>
+        <Text style={styles.instructionText}>3. Find "PhotoAndAnalyze"</Text>
         <Text style={styles.instructionText}>4. Tap on "Permissions"</Text>
         <Text style={styles.instructionText}>5. Enable Camera and Storage permissions</Text>
       </View>

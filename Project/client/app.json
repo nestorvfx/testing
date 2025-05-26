@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "PerplexitySceneCapture",
-    "slug": "PerplexitySceneCapture",
+    "name": "PhotoAndAnalyze",
+    "slug": "PhotoAndAnalyze",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
