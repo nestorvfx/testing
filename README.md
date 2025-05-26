@@ -44,7 +44,7 @@ A React Native app that combines camera functionality with AI-powered image anal
 
 ### Setup
 ```bash
-git clone <repository-url>
+git clone https://github.com/nestorvfx/PhotoAndAnalyze.git
 cd PhotoAndAnalyze
 
 # Install everything
