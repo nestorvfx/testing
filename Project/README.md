@@ -1,87 +1,132 @@
-# OCI Speech Integration Project
+# Perplexity Scene Capture
 
-This project demonstrates integration of Oracle Cloud Infrastructure (OCI) Speech-to-Text service with a React Native application.
+A React Native application with image capture and AI-powered scene analysis using Perplexity AI and Oracle Cloud Infrastructure (OCI) Speech services.
 
-## Project Structure
+## 🚀 Quick Setup
 
-The project is organized into two main directories:
+### 1. Prerequisites
+- Node.js 18+ 
+- React Native development environment
+- Expo CLI
+- New Perplexity AI API key
+- New Oracle Cloud Infrastructure credentials
 
-- **client/**: The React Native application (Expo-based)
-- **server/**: The authentication proxy server for OCI Speech API
+### 2. API Key Configuration
 
-## Quick Start
+#### **Client Setup (Perplexity AI)**
+1. Get your new Perplexity API key from [Perplexity Console](https://docs.perplexity.ai/home)
+2. Edit `client/.env` and replace:
+```bash
+EXPO_PUBLIC_PERPLEXITY_API_KEY=your_actual_perplexity_api_key_here
+```
 
-1. **Install dependencies for both client and server:**
+#### **Server Setup (OCI Speech)**
+1. Get new OCI credentials from Oracle Cloud Console
+2. Download your new private key file to `server/config/`
+3. Edit `server/.env` and replace:
+```bash
+OCI_USER_OCID=your_actual_user_ocid_here
+OCI_TENANCY_OCID=your_actual_tenancy_ocid_here
+OCI_FINGERPRINT=your_actual_fingerprint_here
+OCI_PRIVATE_KEY_PATH=./config/your-private-key.pem
+```
+
+### 3. Installation & Running
 
 ```bash
-# Install root dependencies
+# Install all dependencies
 npm install
+cd server && npm install && cd ..
+cd client && npm install && cd ..
 
-# Install server dependencies
+# Start the server (Terminal 1)
 cd server
-npm install
-cd ..
+npm run dev
 
-# Install client dependencies
+# Start the client (Terminal 2)  
 cd client
-npm install
-cd ..
-
-# Or use the shortcut script to install all dependencies at once
-npm run install:all
+npm start
 ```
 
-2. **Start the server and client:**
+## 📱 Features
 
+- **Image Capture**: Take photos with camera or upload from gallery
+- **AI Scene Analysis**: Analyze images using Perplexity AI
+- **Voice Recognition**: Voice-activated capture and commands
+- **Real-time Processing**: Live analysis with progress indicators
+- **Secure Configuration**: Environment-based API key management
+
+## 🔒 Security
+
+This application uses secure environment variable configuration:
+- API keys are never hardcoded
+- Credentials are loaded from `.env` files
+- Git history has been cleaned of any exposed secrets
+
+## 🛠️ Development
+
+### Project Structure
+- `client/`: React Native Expo application
+- `server/`: Node.js/Express authentication server for OCI
+- `client/.env`: Client environment variables (Perplexity API)
+- `server/.env`: Server environment variables (OCI credentials)
+
+### Commands
 ```bash
-# Start both server and client with one command
-npm run start:both
+# Development mode
+npm run dev           # Start server in dev mode
+npm start            # Start client
 
-# OR run them separately:
-
-# Start the server (in one terminal)
-npm run start:server
-
-# Start the client (in another terminal)
-npm run start:client
+# Production build
+npm run build        # Build server
+npm run prod:android # Build client for Android
 ```
 
-## Testing the Speech Recognition
+## 📋 Troubleshooting
 
-1. Start the server and client as described above
-2. When the Expo client starts, open the app in a web browser or on a device
-3. Use the voice button to test speech recognition
-4. If OCI authentication works correctly, you'll see actual transcriptions
-5. If authentication fails, the app will fall back to simulation mode
+### Common Issues
 
-## Troubleshooting
+**"API key not configured"**
+- Check that `EXPO_PUBLIC_PERPLEXITY_API_KEY` is set in `client/.env`
+- Ensure the API key starts with `pplx-`
 
-If you encounter OCI authentication errors (404 NotAuthorizedOrNotFound), check:
+**"Authentication failed"**  
+- Verify your Perplexity API key is valid and not revoked
+- Check for typos in the `.env` file
 
-1. Verify that all credentials in your config file belong to the same tenancy
-2. Ensure your OCI user has the proper permissions and policies set up
-3. Validate that your private key file is correctly formatted and accessible
-4. Confirm the key file path is correctly specified in server/config/config.txt
-5. Check that you're using the correct API endpoints according to OCI documentation
-   - Speech API endpoint should be: `/20220101/realtimeSessionTokens` (note the plural form)
+**OCI Speech errors**
+- Ensure all OCI environment variables are set in `server/.env`
+- Verify the private key file path is correct
+- Check OCID formats are valid
 
-## Repository Structure
+## 📄 License
 
-```
-Project/
-├── client/             # React Native Expo application
-│   ├── components/     # UI components  
-│   ├── services/       # Service modules including OCI voice integration
-│   └── ...            
-├── server/             # Authentication proxy server
-│   ├── config/         # OCI configuration and keys
-│   └── server.js       # Express server for authentication
-├── package.json        # Root package.json with scripts to run client and server
-└── README.md           # This file
+MIT License - See LICENSE file for details
+
+---
+
+## 🔑 Summary: Where to Put Your API Keys
+
+### **Client Keys** (Perplexity AI)
+**File**: `client/.env`
+```bash
+EXPO_PUBLIC_PERPLEXITY_API_KEY=your_new_perplexity_key_here
 ```
 
-For more detailed information, see the README.md files in client/ and server/ directories.
+### **Server Keys** (Oracle Cloud)
+**File**: `server/.env`  
+```bash
+OCI_USER_OCID=your_new_user_ocid_here
+OCI_TENANCY_OCID=your_new_tenancy_ocid_here
+OCI_FINGERPRINT=your_new_fingerprint_here
+OCI_PRIVATE_KEY_PATH=./config/your-private-key.pem
+```
 
-## License
+**Private Key File**: `server/config/your-private-key.pem`
 
-Private - All rights reserved
+After setting up your keys, run:
+```bash
+cd server && npm run dev
+# In new terminal:
+cd client && npm start
+```

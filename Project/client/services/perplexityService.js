@@ -7,6 +7,29 @@ import { analysisQueue, PRIORITY } from './analysisQueue';
 const API_URL = 'https://api.perplexity.ai/chat/completions';
 const API_KEY = process.env.EXPO_PUBLIC_PERPLEXITY_API_KEY || 'YOUR_PERPLEXITY_API_KEY_HERE'; // Set in environment variables
 
+// Validate API key on service initialization
+const validateAPIKey = () => {
+  if (!API_KEY || API_KEY === 'YOUR_PERPLEXITY_API_KEY_HERE') {
+    throw new Error('Perplexity API key not configured. Please set EXPO_PUBLIC_PERPLEXITY_API_KEY in your environment variables.');
+  }
+  
+  if (!API_KEY.startsWith('pplx-')) {
+    throw new Error('Invalid Perplexity API key format. Key should start with "pplx-"');
+  }
+  
+  if (API_KEY.length < 40) {
+    throw new Error('Perplexity API key appears to be too short. Please check your configuration.');
+  }
+};
+
+// Initialize and validate
+try {
+  validateAPIKey();
+  console.log('Perplexity API configuration validated successfully');
+} catch (error) {
+  console.error('Perplexity API configuration error:', error.message);
+}
+
 // Callbacks object to handle analysis updates
 const analysisEventHandlers = {
   onAnalysisStart: null,
@@ -32,11 +55,23 @@ const BATCH_SIZE = 10; // Process 10 images at a time for more efficient batch p
  */
 export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
   try {
+    // Input validation
+    if (!Array.isArray(images)) {
+      throw new Error('Images parameter must be an array');
+    }
+    
+    if (images.length === 0) {
+      return [];
+    }
+    
+    // Validate API key before processing
+    validateAPIKey();
+    
     // CRITICAL: Use a copy of images to avoid modifying the original array
     const imagesSnapshot = [...images];
     
     // Filter images that haven't been analyzed yet
-    const unanalyzedImages = imagesSnapshot.filter(img => !img.analyzed);
+    const unanalyzedImages = imagesSnapshot.filter(img => img && !img.analyzed);
     
     if (unanalyzedImages.length === 0) {
       return imagesSnapshot;
@@ -354,8 +389,12 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
         stream: false
       };
       
-      let timeoutId;
-      try {
+      let timeoutId;      try {
+        // Validate API key before each request
+        if (!API_KEY || API_KEY === 'YOUR_PERPLEXITY_API_KEY_HERE') {
+          throw new Error('API key not configured');
+        }
+        
         // Create an AbortController to handle timeout
         const controller = new AbortController();
         timeoutId = setTimeout(() => controller.abort(), 45000); // 45-second timeout
@@ -365,18 +404,45 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
           headers: {
             'Authorization': `Bearer ${API_KEY}`,
             'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'User-Agent': 'PerplexitySceneCapture/1.0.0'
           },
           body: JSON.stringify(payload),
           signal: controller.signal
         });
 
+        // Clear timeout if request completes
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`API error (${response.status}): ${errorText}`);
+          let errorMessage = `API error (${response.status})`;
+          
+          try {
+            const errorData = await response.json();
+            errorMessage += `: ${errorData.error?.message || errorData.message || 'Unknown error'}`;
+          } catch {
+            const errorText = await response.text();
+            errorMessage += `: ${errorText || 'Unknown error'}`;
+          }
+          
+          // Don't expose sensitive information in error messages
+          if (response.status === 401) {
+            throw new Error('Authentication failed. Please check your API key.');
+          } else if (response.status === 429) {
+            throw new Error('Rate limit exceeded. Please try again later.');
+          } else if (response.status >= 500) {
+            throw new Error('Server error. Please try again later.');
+          } else {
+            throw new Error(errorMessage);
+          }
         }
 
         const data = await response.json();
+        
+        // Validate response structure
+        if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+          throw new Error('Invalid response format from API');
+        }
         
         // Log the raw API response for debugging if needed
         if (__DEV__) {

@@ -5,6 +5,7 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import * as fs from "fs";
 import * as path from "path";
+import { loadOCIConfig, hasPlaceholderValues } from "./utils/config";
 
 const app = express();
 const port = 8450;
@@ -29,81 +30,45 @@ app.use(cors({
 app.use(bodyParser.json());
 app.use(express.static(__dirname)); // Serve static files
 
-// Load OCI configuration from config file
-const loadOCIConfig = () => {
-  try {
-    // Use path that works from both source and dist directories
-    const configPath = path.resolve(__dirname, '..', 'config', 'config.txt');
-    console.log(`Loading OCI config from: ${configPath}`);
-    
-    if (!fs.existsSync(configPath)) {
-      throw new Error(`Configuration file not found at ${configPath}`);
-    }
-    
-    const configData = fs.readFileSync(configPath, 'utf8');
-    
-    const config: any = {};
-    configData.split('\n').forEach(line => {
-      // Skip comments and empty lines
-      if (line.trim().startsWith('//') || line.trim().startsWith('[') || !line.trim()) {
-        return;
-      }
-      
-      const [key, value] = line.split('=').map(part => part.trim());
-      if (key && value) {
-        config[key] = value;
-      }
-    });
-    
-    // Required fields
-    const requiredFields = ['user', 'fingerprint', 'tenancy', 'region', 'key_file'];
-    const missingFields = requiredFields.filter(field => !config[field]);
-    
-    if (missingFields.length > 0) {
-      throw new Error(`Missing required configuration fields: ${missingFields.join(', ')}`);
-    }
-      // Load the private key
-    const privateKeyPath = path.resolve(__dirname, '..', 'config', config.key_file);
-    console.log(`Loading private key from: ${privateKeyPath}`);
-    
-    if (!fs.existsSync(privateKeyPath)) {
-      throw new Error(`Private key file not found at ${privateKeyPath}`);
-    }
-    
-    config.privateKey = fs.readFileSync(privateKeyPath, 'utf8');
-    
-    // Validate key format
-    if (!config.privateKey.includes('PRIVATE KEY')) {
-      throw new Error('Private key file does not appear to be in PEM format');
-    }
-    
-    console.log('OCI Configuration loaded successfully');
-    console.log(`- User: ${config.user}`);
-    console.log(`- Tenancy: ${config.tenancy}`);
-    console.log(`- Region: ${config.region}`);
-    
-    return config;
-  } catch (error) {
-    console.error('Error loading OCI configuration:', error);
-    throw error;
+// Initialize OCI configuration with security checks
+let ociConfig: any;
+try {
+  ociConfig = loadOCIConfig();
+  
+  // Check for placeholder values in production
+  if (hasPlaceholderValues(ociConfig)) {
+    console.error('ERROR: Configuration contains placeholder values!');
+    console.error('Please set proper values in environment variables or config file.');
+    process.exit(1);
   }
-};
+  
+  console.log('OCI Configuration loaded successfully');
+  console.log(`- User: ${ociConfig.user}`);
+  console.log(`- Tenancy: ${ociConfig.tenancy}`);
+  console.log(`- Region: ${ociConfig.region}`);
+} catch (error) {
+  console.error('Failed to load OCI configuration:', error);
+  process.exit(1);
+}
 
-// Load configuration
-const ociConfig = loadOCIConfig();
+// Configuration constants
 const compartmentId = ociConfig.tenancy; // Use tenancy OCID as compartment for now
 const region = ociConfig.region;
-const configFilePath = path.resolve(__dirname, '..', 'config', 'config.txt');
 
 /**
  * Generates a real-time session token for OCI AI Speech Service
  */
 async function getRealtimeToken() {
   try {
-    // Initialize OCI authentication provider
-    const provider: common.ConfigFileAuthenticationDetailsProvider = 
-      new common.ConfigFileAuthenticationDetailsProvider(configFilePath, "DEFAULT");
-    provider.setRegion(region);
+    // Initialize OCI authentication provider using secure config
+    const provider = new common.SimpleAuthenticationDetailsProvider(
+      ociConfig.tenancy,
+      ociConfig.user,
+      ociConfig.fingerprint,
+      ociConfig.privateKey,
+      null, // passphrase (null if key is not encrypted)
+      common.Region.fromRegionId(ociConfig.region)
+    );
 
     // Initialize the Speech client
     const speechClient = new aispeech.AIServiceSpeechClient({ 
@@ -189,7 +154,7 @@ app.get("/config", (req, res) => {
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`OCI Speech Server running at http://0.0.0.0:${port} (accessible from any network interface)`);
-  console.log(`Configuration loaded from: ${configFilePath}`);
+  console.log(`Configuration loaded securely`);
   console.log(`Region: ${region}`);
   console.log(`Compartment ID: ${compartmentId}`);
   console.log("Available endpoints:");
