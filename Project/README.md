@@ -1,90 +1,87 @@
-# Perplexity Scene Capture
+# OCI Speech Integration Project
 
-A mobile application that lets you capture images and get AI-powered analysis of their content. This tool helps you identify and learn about objects, scenes, or documents through your camera.
+This project demonstrates integration of Oracle Cloud Infrastructure (OCI) Speech-to-Text service with a React Native application.
 
-## Features
+## Project Structure
 
-- **Multi-platform Camera**: Capture photos across iOS, Android, and web platforms
-- **Voice-activated Capture**: Speak to automatically capture photos with attached voice context
-- **Visual Analysis**: Process images through Perplexity AI to identify content
-- **Multi-image Analysis**: Connect information across several related photos
-- **Immediate or Batch Processing**: Choose between instant or later analysis
-- **Offline Capability**: Take photos without internet and analyze when connected
+The project is organized into two main directories:
 
-## How It Works
+- **client/**: The React Native application (Expo-based)
+- **server/**: The authentication proxy server for OCI Speech API
 
-1. **Capture Photos**: Use the camera button or voice commands to take pictures
-2. **Voice Capture**: When voice mode is active, speaking automatically captures an image and attaches your words as context
-3. **Process Images**: Send photos for AI analysis individually or in batches
-4. **View Results**: Receive detailed information about what's in each photo
-5. **Deep Analysis**: Compare multiple images to find connections between them
+## Quick Start
 
-## Key Controls
-
-- **Voice Button**: Toggle voice capture mode (top right)
-- **Immediate Analysis**: Toggle automatic analysis after capture (next to voice button)
-- **Capture Button**: Take photos manually (center bottom)
-- **Analyze Button**: Process pending images (bottom right)
-- **Deep Analysis**: Analyze connections between multiple images (bottom right)
-- **Card Stack**: View and expand captured images (bottom left)
-
-## Technical Overview
-
-- **Framework**: React Native with Expo
-- **Image Analysis**: Perplexity AI API integration with two models:
-  - Standard analysis for individual images
-  - Deep research model for multi-image connections
-- **Speech Recognition**: Tiered fallback system:
-  - Azure Speech Services (primary)
-  - Web Speech API (web fallback)
-  - Custom continuous recognition module for Android
-- **Cross-platform**: Unified codebase with platform-specific optimizations
-
-## Requirements
-
-- iOS 13+ or Android 7+
-- Web: Modern browsers (Chrome, Firefox, Safari, Edge)
-- Camera and microphone permissions required
-- Internet connection for analysis functions
-
-## Installation
+1. **Install dependencies for both client and server:**
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/perplexity-scene-capture.git
-
-# Navigate to project directory
-cd perplexity-scene-capture
-
-# Install dependencies
+# Install root dependencies
 npm install
 
-# Start the application
-npm start
+# Install server dependencies
+cd server
+npm install
+cd ..
+
+# Install client dependencies
+cd client
+npm install
+cd ..
+
+# Or use the shortcut script to install all dependencies at once
+npm run install:all
 ```
 
-## Data Handling
+2. **Start the server and client:**
 
-- Images are processed through secure API connections
-- Voice data is processed locally when possible
-- Analysis results are stored on your device only
-- No permanent cloud storage of user content
+```bash
+# Start both server and client with one command
+npm run start:both
+
+# OR run them separately:
+
+# Start the server (in one terminal)
+npm run start:server
+
+# Start the client (in another terminal)
+npm run start:client
+```
+
+## Testing the Speech Recognition
+
+1. Start the server and client as described above
+2. When the Expo client starts, open the app in a web browser or on a device
+3. Use the voice button to test speech recognition
+4. If OCI authentication works correctly, you'll see actual transcriptions
+5. If authentication fails, the app will fall back to simulation mode
 
 ## Troubleshooting
 
-- **Camera Issues**: Verify camera permissions in device settings
-- **Voice Recognition Problems**: Check microphone permissions and try using the long-press diagnostic on the voice button
-- **Analysis Failures**: Confirm internet connectivity
-- **Android Voice Issues**: The app includes automatic fixes for common Android microphone problems
+If you encounter OCI authentication errors (404 NotAuthorizedOrNotFound), check:
 
-## Development
+1. Verify that all credentials in your config file belong to the same tenancy
+2. Ensure your OCI user has the proper permissions and policies set up
+3. Validate that your private key file is correctly formatted and accessible
+4. Confirm the key file path is correctly specified in server/config/config.txt
+5. Check that you're using the correct API endpoints according to OCI documentation
+   - Speech API endpoint should be: `/20220101/realtimeSessionTokens` (note the plural form)
 
-This project uses several custom components:
-- Custom crypto-polyfill for web platform compatibility
-- Android-specific audio fixes for improved voice recognition
-- Cross-platform camera handling with platform-specific optimizations
-- Custom continuous speech recognition module for Android
+## Repository Structure
+
+```
+Project/
+├── client/             # React Native Expo application
+│   ├── components/     # UI components  
+│   ├── services/       # Service modules including OCI voice integration
+│   └── ...            
+├── server/             # Authentication proxy server
+│   ├── config/         # OCI configuration and keys
+│   └── server.js       # Express server for authentication
+├── package.json        # Root package.json with scripts to run client and server
+└── README.md           # This file
+```
+
+For more detailed information, see the README.md files in client/ and server/ directories.
 
 ## License
 
-MIT License - See LICENSE file for details
+Private - All rights reserved

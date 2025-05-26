@@ -1,0 +1,52 @@
+{
+  "name": "perplexityscenecapture",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "build:android": "expo build:android --no-publish",
+    "build:ios": "expo build:ios --no-publish",
+    "build:web": "expo build:web",
+    "prod:android": "NODE_ENV=production expo run:android --release",
+    "prod:ios": "NODE_ENV=production expo run:ios --release",
+    "install:android-module": "node -e \"require('child_process').execSync(process.platform === 'win32' ? 'powershell -File ./scripts/Install-OciVoiceAndroid.ps1' : 'bash ./scripts/install-oci-voice-android.sh', {stdio: 'inherit'})\"",
+    "prebuild:android": "expo prebuild --platform android --clean",
+    "setup:android": "npm run install:android-module && npm run prebuild:android"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~5.0.4",
+    "@expo/vector-icons": "~14.1.0",
+    "@types/react": "~19.0.10",
+    "expo": "~53.0.6",
+    "expo-audio": "~0.4.5",
+    "expo-av": "~15.1.4",
+    "expo-camera": "~16.1.6",
+    "expo-dev-client": "~5.1.7",
+    "expo-file-system": "~18.1.8",
+    "expo-image-manipulator": "~13.1.5",
+    "expo-media-library": "~17.1.6",
+    "expo-modules-core": "~2.3.12",
+    "expo-splash-screen": "~0.30.8",
+    "expo-status-bar": "~2.2.3",
+    "expo-system-ui": "~5.0.7",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.2",
+    "react-native-gesture-handler": "~2.24.0",
+    "react-native-oci-voice": "file:custom-modules/react-native-oci-voice",
+    "react-native-reanimated": "~3.17.5",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-web": "~0.20.0",
+    "stream-browserify": "~3.0.0",
+    "text-encoding": "^0.7.0",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0",
+    "babel-plugin-transform-remove-console": "^6.9.4"
+  },
+  "private": true
+}
