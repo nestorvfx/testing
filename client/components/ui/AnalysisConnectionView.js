@@ -64,12 +64,11 @@ const AnalysisConnectionView = ({ images, title, customPrompt }) => {
               onMouseLeave: handleMouseUp,
             })}
           >
-            {displayImages.map((image, index) => (
-              <View 
+            {displayImages.map((image, index) => (              <View 
                 key={index} 
                 style={[
                   styles.imageContainer,
-                  Platform.OS === 'web' && styles.webImageContainer
+                  Platform.OS === 'web' ? styles.webImageContainer : null
                 ]}
               >
                 <Image 
@@ -77,7 +76,7 @@ const AnalysisConnectionView = ({ images, title, customPrompt }) => {
                   style={[
                     styles.image, 
                     { width: imageSize, height: imageSize },
-                    Platform.OS === 'web' && styles.webImage
+                    Platform.OS === 'web' ? styles.webImage : null
                   ]} 
                 />
               </View>

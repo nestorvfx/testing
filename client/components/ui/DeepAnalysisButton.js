@@ -11,14 +11,13 @@ const DeepAnalysisButton = ({ onPress, isAnalyzing, hasDeepAnalysis, analyzedCou
   const progressText = totalCount > 0 ? `${analyzedCount}/${totalCount}` : '';
   const showProgress = totalCount > 0 && analyzedCount > 0;
   
-  return (
-    <TouchableOpacity
+  return (    <TouchableOpacity
       style={[
         styles.container,
-        hasDeepAnalysis && styles.hasResultsContainer,
-        isSmallScreen && styles.smallScreenContainer,
+        hasDeepAnalysis ? styles.hasResultsContainer : null,
+        isSmallScreen ? styles.smallScreenContainer : null,
         // Add Android-specific styles
-        Platform.OS === 'android' && styles.androidContainer
+        Platform.OS === 'android' ? styles.androidContainer : null
       ]}
       onPress={onPress}
       // Add hitSlop to increase touch area, especially important for Android

@@ -72,12 +72,11 @@ const DeepAnalysisDialog = ({
             >
               <Text style={styles.buttonText}>Cancel</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
+              <TouchableOpacity 
               style={[
                 styles.button, 
                 styles.submitButton,
-                (isLoading || captureCount === 0) && styles.disabledButton
+                (isLoading || captureCount === 0) ? styles.disabledButton : null
               ]}
               onPress={handleSubmit}
               disabled={isLoading || captureCount === 0}

@@ -39,11 +39,10 @@ const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {
     hour: '2-digit',
     minute: '2-digit'
   });
-
   return (
     <View style={[
       styles.analysisItem,
-      isExpanded && styles.analysisItemExpanded
+      isExpanded ? styles.analysisItemExpanded : null
     ]}>
       {/* Header - always visible */}
       <TouchableOpacity 
@@ -72,10 +71,9 @@ const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {
       
       {/* Body - only visible when expanded */}
       {isExpanded && (
-        <View style={styles.analysisContent}>
-          <Text style={styles.timestamp}>
+        <View style={styles.analysisContent}>          <Text style={styles.timestamp}>
             {formattedDate}
-            {analysis.customPrompt && ' • Custom Analysis'}
+            {analysis.customPrompt ? ' • Custom Analysis' : ''}
           </Text>
           
           {analysis.customPrompt && (
@@ -179,8 +177,7 @@ const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis 
         onPress={onClose}
       />
       
-      {/* Results container with dynamic size */}
-      <View style={[
+      {/* Results container with dynamic size */}      <View style={[
         styles.container, 
         { 
           width: cardWidth, 
@@ -190,7 +187,7 @@ const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis 
           minWidth: Math.min(width * 0.85, 300),
           zIndex: 9002 // Much higher z-index to ensure it's above all other components
         },
-        Platform.OS === 'web' && styles.containerWeb
+        Platform.OS === 'web' ? styles.containerWeb : null
       ]}>
         {/* Header */}
         <View style={styles.header}>
@@ -240,11 +237,10 @@ const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis 
           </View>
         )}
         
-        {/* Floating Action Button - the only '+' button we keep */}
-        <TouchableOpacity 
+        {/* Floating Action Button - the only '+' button we keep */}        <TouchableOpacity 
           style={[
             styles.fab,
-            Platform.OS === 'web' && styles.fabWeb
+            Platform.OS === 'web' ? styles.fabWeb : null
           ]} 
           onPress={onAddNewAnalysis}
         >

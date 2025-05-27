@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Modal, 
   View, 
@@ -20,38 +20,43 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
   const [prompt, setPrompt] = useState('');
   const [selectedImages, setSelectedImages] = useState([]);
 
-  // Reset selected images when modal becomes visible or captures change
-  React.useEffect(() => {
+  // Reset selected images when modal opens or captures change
+  useEffect(() => {
     if (visible && captures.length > 0) {
-      setSelectedImages(captures.map(capture => capture.uri));
+      const validCaptures = captures.filter(
+        capture => capture && capture.uri && typeof capture.uri === 'string'
+      );
+      setSelectedImages(validCaptures.map(capture => capture.uri));
     }
   }, [visible, captures]);
+
   const toggleImageSelection = (imageUri) => {
-    setSelectedImages(prev => {
-      if (prev.includes(imageUri)) {
-        return prev.filter(uri => uri !== imageUri);
-      } else {
-        return [...prev, imageUri];
-      }
-    });
+    setSelectedImages(prev =>
+      prev.includes(imageUri)
+        ? prev.filter(uri => uri !== imageUri)
+        : [...prev, imageUri]
+    );
   };
 
   const selectAllImages = () => {
-    setSelectedImages(captures.map(capture => capture.uri));
+    const validCaptures = captures.filter(
+      capture => capture && capture.uri && typeof capture.uri === 'string'
+    );
+    setSelectedImages(validCaptures.map(capture => capture.uri));
   };
 
-  const selectNoImages = () => {
-    setSelectedImages([]);
-  };
+  const selectNoImages = () => setSelectedImages([]);
 
   const handleSubmit = () => {
-    // Get the selected capture objects
-    const selectedCaptures = captures.filter(capture => 
+    const validCaptures = captures.filter(
+      capture => capture && capture.uri && typeof capture.uri === 'string'
+    );
+    const selectedCaptures = validCaptures.filter(capture =>
       selectedImages.includes(capture.uri)
     );
     onSubmit(prompt, selectedCaptures);
-    setPrompt(''); // Clear prompt after submit
-    setSelectedImages(captures.map(capture => capture.uri)); // Reset to all selected
+    setPrompt('');
+    setSelectedImages(validCaptures.map(capture => capture.uri));
     onClose();
   };
 
@@ -64,13 +69,16 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
       visible={visible}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoidingView}
       >
         <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.backdrop} activeOpacity={0.7} onPress={onClose} />
-          
+          <TouchableOpacity
+            style={styles.backdrop}
+            activeOpacity={0.7}
+            onPress={onClose}
+          />
           <View style={styles.modalContainer}>
             <View style={styles.header}>
               <Text style={styles.title}>New Deep Analysis</Text>
@@ -78,11 +86,10 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
                 <Ionicons name="close" size={22} color="#fff" />
               </TouchableOpacity>
             </View>
-              <View style={styles.content}>
+            <View style={styles.content}>
               <Text style={styles.subtitle}>
                 Enter a specific prompt to analyze your selected images:
               </Text>
-              
               <TextInput
                 style={styles.input}
                 placeholder="E.g., What historical period do these items belong to?"
@@ -94,28 +101,27 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
                 autoFocus={true}
                 placeholderTextColor="#999"
               />
-
-              {/* Image Selection Section */}
               <View style={styles.imageSelectionContainer}>
                 <View style={styles.selectionHeader}>
                   <Text style={styles.selectionTitle}>
                     Select Images ({selectedImages.length}/{captures.length})
                   </Text>
                   <View style={styles.selectionButtons}>
-                    <TouchableOpacity 
-                      style={styles.selectionButton} 
+                    <TouchableOpacity
+                      style={styles.selectionButton}
                       onPress={selectAllImages}
                     >
                       <Text style={styles.selectionButtonText}>All</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={styles.selectionButton} 
+                    <TouchableOpacity
+                      style={styles.selectionButton}
                       onPress={selectNoImages}
                     >
                       <Text style={styles.selectionButtonText}>None</Text>
                     </TouchableOpacity>
                   </View>
-                </View>                <ScrollView 
+                </View>
+                <ScrollView
                   style={styles.imageGrid}
                   showsVerticalScrollIndicator={true}
                   nestedScrollEnabled={true}
@@ -128,66 +134,90 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
                         </Text>
                       </View>
                     ) : (
-                      captures.map((capture, index) => (
-                        <TouchableOpacity
-                          key={capture.uri}
-                          style={[
-                            styles.imageItem,
-                            (index + 1) % 3 === 0 && styles.imageItemLast // Remove margin on every 3rd item
-                          ]}
-                          onPress={() => toggleImageSelection(capture.uri)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={[
-                            styles.imageContainer,
-                            selectedImages.includes(capture.uri) && styles.selectedImageContainer
-                          ]}>
-                            <Image 
-                              source={{ uri: capture.uri }} 
-                              style={styles.imagePreview}
-                              resizeMode="cover"
-                            />
-                            <View style={[
-                              styles.checkbox,
-                              selectedImages.includes(capture.uri) && styles.checkedBox
-                            ]}>
-                              {selectedImages.includes(capture.uri) && (
-                                <Ionicons name="checkmark" size={14} color="white" />
+                      captures
+                        .filter(
+                          capture =>
+                            capture &&
+                            capture.uri &&
+                            typeof capture.uri === 'string'
+                        )
+                        .map((capture, index) => (
+                          <TouchableOpacity
+                            key={capture.uri || `capture-${index}`}
+                            style={[
+                              styles.imageItem,
+                              (index + 1) % 3 === 0 ? styles.imageItemLast : null,
+                            ]}
+                            onPress={() => toggleImageSelection(capture.uri)}
+                            activeOpacity={0.7}
+                          >
+                            <View
+                              style={[
+                                styles.imageContainer,
+                                selectedImages.includes(capture.uri)
+                                  ? styles.selectedImageContainer
+                                  : null,
+                              ]}
+                            >
+                              <Image
+                                source={{ uri: capture.uri }}
+                                style={styles.imagePreview}
+                                resizeMode="cover"
+                              />
+                              <View
+                                style={[
+                                  styles.checkbox,
+                                  selectedImages.includes(capture.uri)
+                                    ? styles.checkedBox
+                                    : null,
+                                ]}
+                              >
+                                {selectedImages.includes(capture.uri) && (
+                                  <Ionicons
+                                    name="checkmark"
+                                    size={14}
+                                    color="white"
+                                  />
+                                )}
+                              </View>
+                              {capture.analyzed && (
+                                <View style={styles.analyzedBadge}>
+                                  <Ionicons
+                                    name="checkmark-circle"
+                                    size={12}
+                                    color="#4CAF50"
+                                  />
+                                </View>
                               )}
                             </View>
-                            {capture.analyzed && (
-                              <View style={styles.analyzedBadge}>
-                                <Ionicons name="checkmark-circle" size={12} color="#4CAF50" />
-                              </View>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      ))
+                          </TouchableOpacity>
+                        ))
                     )}
                   </View>
                 </ScrollView>
               </View>
-              
               <View style={styles.buttonContainer}>
-                <TouchableOpacity 
-                  style={[styles.button, styles.cancelButton]} 
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
                   onPress={onClose}
                 >
                   <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>                <TouchableOpacity 
+                </TouchableOpacity>
+                <TouchableOpacity
                   style={[
-                    styles.button, 
+                    styles.button,
                     styles.submitButton,
-                    selectedImages.length === 0 && styles.disabledButton
-                  ]} 
+                    selectedImages.length === 0 ? styles.disabledButton : null,
+                  ]}
                   onPress={handleSubmit}
                   disabled={selectedImages.length === 0}
                 >
                   <Text style={styles.submitButtonText}>
-                    {selectedImages.length === 0 
-                      ? 'Select Images to Analyze' 
-                      : `Analyze ${selectedImages.length} ${selectedImages.length === 1 ? 'Image' : 'Images'}`
-                    }
+                    {selectedImages.length === 0
+                      ? 'Select Images to Analyze'
+                      : `Analyze ${selectedImages.length} ${
+                          selectedImages.length === 1 ? 'Image' : 'Images'
+                        }`}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -200,9 +230,7 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
 };
 
 const styles = StyleSheet.create({
-  keyboardAvoidingView: {
-    flex: 1,
-  },
+  keyboardAvoidingView: { flex: 1 },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -210,12 +238,15 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContainer: {
-    width: Math.min(width * 0.9, 450), // Slightly wider to accommodate image grid
-    maxHeight: '85%', // Limit height to allow scrolling
+    width: Math.min(width * 0.9, 450),
+    maxHeight: '85%',
     backgroundColor: 'white',
     borderRadius: 16,
     overflow: 'hidden',
@@ -235,9 +266,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: 'white',
   },
-  closeButton: {
-    padding: 4,
-  },
+  closeButton: { padding: 4 },
   content: {
     padding: 16,
     flex: 1,
@@ -272,7 +301,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-  },  selectionButtons: {
+  },
+  selectionButtons: {
     flexDirection: 'row',
   },
   selectionButton: {
@@ -288,23 +318,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   imageGrid: {
-    maxHeight: 200, // Limit height for scrolling
+    maxHeight: 250, // Increased for better visibility
     borderWidth: 1,
     borderColor: '#eee',
     borderRadius: 8,
     backgroundColor: '#fafafa',
-  },  imageGridContent: {
+  },
+  imageGridContent: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     padding: 8,
-  },  imageItem: {
-    width: '30%', // 3 columns with gaps
+  },
+  imageItem: {
+    width: '31%', // Slightly adjusted for better spacing
     aspectRatio: 1,
-    marginRight: '3.33%', // Add margin for spacing
+    marginRight: '3.5%',
     marginBottom: 8,
   },
   imageItemLast: {
-    marginRight: 0, // Remove margin on last item in row
+    marginRight: 0,
   },
   imageContainer: {
     width: '100%',
@@ -352,11 +384,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#eee',
+    width: '100%',
   },
   noImagesText: {
     fontSize: 14,
     color: '#999',
     fontStyle: 'italic',
+    textAlign: 'center',
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -384,7 +418,7 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: 'white',
     fontWeight: 'bold',
-  }
+  },
 });
 
 export default NewAnalysisPromptModal;

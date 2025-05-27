@@ -8,26 +8,32 @@ import * as path from "path";
 import { loadOCIConfig, hasPlaceholderValues } from "./utils/config";
 
 const app = express();
-const port = 8450;
+const port = Number(process.env.PORT) || 8450;
 
-// CORS configuration
+// CORS configuration - Updated for production
+const allowedOrigins = [
+  'http://localhost:3000', 
+  'http://localhost:3001', 
+  'http://localhost:8081', 
+  'http://localhost:8082', 
+  'http://localhost:8083', 
+  'http://localhost:19006',
+  'http://192.168.8.101:8081',
+  'http://192.168.8.101:19006',
+  /^http:\/\/192\.168\.8\.\d+:\d+$/,
+  // Add production domains
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+  ...(process.env.PRODUCTION_DOMAIN ? [process.env.PRODUCTION_DOMAIN] : [])
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'http://localhost:3001', 
-    'http://localhost:8081', 
-    'http://localhost:8082', 
-    'http://localhost:8083', 
-    'http://localhost:19006',
-    'http://192.168.8.101:8081',  // Android connecting to computer IP
-    'http://192.168.8.101:19006', // Android Expo dev server
-    /^http:\/\/192\.168\.8\.\d+:\d+$/  // Allow any device in the local network
-  ], 
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static(__dirname)); // Serve static files
 
 // Initialize OCI configuration with security checks
@@ -131,11 +137,28 @@ app.get("/region", (req, res) => {
  * Health check endpoint
  */
 app.get("/health", (req, res) => {
-  res.json({ 
-    status: "OK", 
+  res.status(200).json({
+    status: "healthy",
     timestamp: new Date().toISOString(),
-    region: region,
-    compartmentId: compartmentId
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+    version: process.env.npm_package_version || '1.0.0',
+    oci: {
+      configured: !!ociConfig.privateKey,
+      region: region
+    }
+  });
+});
+
+/**
+ * Server info endpoint
+ */
+app.get("/info", (req, res) => {
+  res.json({
+    name: "OCI Speech Server",
+    version: process.env.npm_package_version || '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -153,13 +176,25 @@ app.get("/config", (req, res) => {
 });
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`OCI Speech Server running at http://0.0.0.0:${port} (accessible from any network interface)`);
-  console.log(`Configuration loaded securely`);
-  console.log(`Region: ${region}`);
-  console.log(`Compartment ID: ${compartmentId}`);
-  console.log("Available endpoints:");
+  console.log(`🚀 OCI Speech Server running at http://0.0.0.0:${port}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌍 Region: ${region}`);
+  console.log(`📁 Compartment ID: ${compartmentId}`);
+  console.log("📋 Available endpoints:");
   console.log("  GET /health - Health check");
+  console.log("  GET /info - Server information");
   console.log("  GET /authenticate - Get session token");
   console.log("  GET /region - Get configured region");
   console.log("  GET /config - Get configuration info");
+    // Log startup warnings
+  if (hasPlaceholderValues(ociConfig)) {
+    console.warn("⚠️  WARNING: Some configuration values appear to be placeholders!");
+    console.warn("⚠️  Please update your OCI configuration before production use.");
+  }
+  
+  if (process.env.NODE_ENV === 'production') {
+    console.log("✅ Production mode enabled");
+  } else {
+    console.log("🔧 Development mode enabled");
+  }
 });

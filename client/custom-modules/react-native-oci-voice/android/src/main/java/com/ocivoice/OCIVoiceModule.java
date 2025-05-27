@@ -60,11 +60,12 @@ public class OCIVoiceModule extends ReactContextBaseJavaModule {
     private String sessionToken = null;
     private String compartmentId = null;
     private String region = "eu-amsterdam-1"; // Default region
-    
-    // Audio recording components
+      // Audio recording components
     private AudioRecord audioRecord = null;
     private ExecutorService executor = Executors.newSingleThreadExecutor();
-    private boolean shouldContinue = false;
+    private volatile boolean shouldContinue = false;
+    private volatile boolean isRecording = false;
+    private final Object audioLock = new Object();
     
     // WebSocket components
     private OkHttpClient okHttpClient = new OkHttpClient();
@@ -188,12 +189,13 @@ public class OCIVoiceModule extends ReactContextBaseJavaModule {
             promise.reject("STOP_ERROR", "Failed to stop listening: " + e.getMessage());
         }
     }
-    
-    /**
+      /**
      * Clean up resources
      */
     @ReactMethod
     public void destroy() {
+        Log.d(TAG, "Destroying OCIVoiceModule...");
+        
         if (isListening) {
             stopAudioCapture();
             closeWebSocket();
@@ -202,10 +204,22 @@ public class OCIVoiceModule extends ReactContextBaseJavaModule {
         isInitialized = false;
         isListening = false;
         
-        // Shut down executor
+        // Shut down executor and wait for completion
         if (executor != null && !executor.isShutdown()) {
             executor.shutdown();
+            try {
+                if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    Log.w(TAG, "Executor did not terminate gracefully, forcing shutdown");
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Log.w(TAG, "Interrupted while waiting for executor termination");
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
+        
+        Log.d(TAG, "OCIVoiceModule destroyed successfully");
     }
       /**
      * Connect to OCI Speech WebSocket
@@ -339,8 +353,7 @@ public class OCIVoiceModule extends ReactContextBaseJavaModule {
             webSocket = null;
         }
     }
-    
-    /**
+      /**
      * Start audio capture
      */
     private void startAudioCapture() {
@@ -350,70 +363,132 @@ public class OCIVoiceModule extends ReactContextBaseJavaModule {
             return;
         }
         
-        try {
-            audioRecord = new AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
-                    SAMPLE_RATE,
-                    CHANNEL_CONFIG,
-                    AUDIO_FORMAT,
-                    BUFFER_SIZE);
-            
-            if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-                emitSpeechError("audio_init_error", "Failed to initialize AudioRecord");
+        synchronized (audioLock) {
+            // Don't start if already recording
+            if (isRecording) {
+                Log.d(TAG, "Audio capture already running");
                 return;
             }
             
-            audioRecord.startRecording();
-            shouldContinue = true;
-            
-            // Start audio processing in a background thread
-            executor.execute(() -> {
-                short[] buffer = new short[BUFFER_SIZE / 2];
+            try {
+                audioRecord = new AudioRecord(
+                        MediaRecorder.AudioSource.MIC,
+                        SAMPLE_RATE,
+                        CHANNEL_CONFIG,
+                        AUDIO_FORMAT,
+                        BUFFER_SIZE);
                 
-                while (shouldContinue && webSocket != null) {
-                    int readResult = audioRecord.read(buffer, 0, buffer.length);
+                if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
+                    emitSpeechError("audio_init_error", "Failed to initialize AudioRecord");
+                    return;
+                }
+                
+                audioRecord.startRecording();
+                shouldContinue = true;
+                isRecording = true;
+                Log.d(TAG, "AudioRecord started successfully");                // Start audio processing in a background thread
+                executor.execute(() -> {
+                    short[] buffer = new short[BUFFER_SIZE / 2];
                     
-                    if (readResult > 0) {
-                        // Calculate audio volume
-                        float volume = calculateVolume(buffer, readResult);
-                        emitVolumeChanged(volume);
+                    while (shouldContinue && webSocket != null) {
+                        // Check if we should continue before each read operation
+                        if (!shouldContinue) {
+                            Log.d(TAG, "shouldContinue is false, breaking audio loop");
+                            break;
+                        }
                         
-                        // Send audio data over WebSocket
-                        if (webSocket != null) {
-                            ByteBuffer byteBuffer = ByteBuffer.allocate(readResult * 2);
-                            byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
+                        synchronized (audioLock) {
+                            if (audioRecord == null || !isRecording) {
+                                Log.d(TAG, "AudioRecord is null or not recording, breaking audio loop");
+                                break;
+                            }
+                        }
+                        
+                        int readResult;
+                        try {
+                            readResult = audioRecord.read(buffer, 0, buffer.length);
+                        } catch (IllegalStateException e) {
+                            Log.w(TAG, "AudioRecord read failed - likely stopped: " + e.getMessage());
+                            break;
+                        }
+                        
+                        if (readResult > 0 && shouldContinue) {
+                            // Calculate audio volume
+                            float volume = calculateVolume(buffer, readResult);
+                            emitVolumeChanged(volume);
                             
-                            byteBuffer.asShortBuffer().put(buffer, 0, readResult);
-                            webSocket.send(ByteString.of(byteBuffer.array(), 0, readResult * 2));
+                            // Send audio data over WebSocket
+                            if (webSocket != null && shouldContinue) {
+                                try {
+                                    ByteBuffer byteBuffer = ByteBuffer.allocate(readResult * 2);
+                                    byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
+                                    
+                                    byteBuffer.asShortBuffer().put(buffer, 0, readResult);
+                                    webSocket.send(ByteString.of(byteBuffer.array(), 0, readResult * 2));
+                                } catch (Exception e) {
+                                    Log.w(TAG, "Failed to send audio data over WebSocket: " + e.getMessage());
+                                    break;
+                                }
+                            }
+                        } else if (readResult < 0) {
+                            Log.w(TAG, "AudioRecord read returned error: " + readResult);
+                            break;
                         }
                     }
-                }
-                
-                // Clean up
-                if (audioRecord != null && audioRecord.getState() == AudioRecord.STATE_INITIALIZED) {
-                    audioRecord.stop();
-                    audioRecord.release();
-                    audioRecord = null;
-                }
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "Error starting audio capture", e);
-            emitSpeechError("audio_capture_error", "Failed to start audio capture: " + e.getMessage());
+                    
+                    Log.d(TAG, "Audio capture loop ended - AudioRecord cleanup will be handled by stopAudioCapture()");
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Error starting audio capture", e);
+                emitSpeechError("audio_capture_error", "Failed to start audio capture: " + e.getMessage());
+                isRecording = false;
+            }
         }
-    }
-    
-    /**
+    }    /**
      * Stop audio capture
      */
     private void stopAudioCapture() {
+        Log.d(TAG, "stopAudioCapture called - setting shouldContinue to false");
         shouldContinue = false;
         
-        if (audioRecord != null) {
-            if (audioRecord.getState() == AudioRecord.STATE_INITIALIZED) {
-                audioRecord.stop();
-                audioRecord.release();
+        // Wait a moment for the background thread to finish its current iteration
+        try {
+            Thread.sleep(50);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        
+        synchronized (audioLock) {
+            if (audioRecord != null && isRecording) {
+                try {
+                    Log.d(TAG, "AudioRecord state: " + audioRecord.getState() + ", isRecording: " + isRecording);
+                    
+                    if (audioRecord.getState() == AudioRecord.STATE_INITIALIZED && 
+                        audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                        Log.d(TAG, "Stopping AudioRecord...");
+                        audioRecord.stop();
+                        Log.d(TAG, "AudioRecord stopped successfully");
+                    } else {
+                        Log.d(TAG, "AudioRecord was not in recording state, skipping stop()");
+                    }
+                    
+                    isRecording = false;
+                    audioRecord.release();
+                    Log.d(TAG, "AudioRecord released");
+                    
+                } catch (IllegalStateException e) {
+                    Log.w(TAG, "AudioRecord IllegalStateException during stop: " + e.getMessage());
+                    isRecording = false;
+                } catch (Exception e) {
+                    Log.e(TAG, "Error stopping AudioRecord: " + e.getMessage());
+                    isRecording = false;
+                } finally {
+                    audioRecord = null;
+                    isRecording = false;
+                }
+            } else {
+                Log.d(TAG, "AudioRecord is null or not recording - no cleanup needed");
             }
-            audioRecord = null;
         }
     }
     

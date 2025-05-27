@@ -425,18 +425,16 @@ export default function App() {
         totalImagesInSession: Math.max(0, prevSession.totalImagesInSession - unanalyzedImages.length)
       }));
       
-      // Decrement the active analysis counter
-      setActiveAnalysisCount(count => Math.max(0, count - 1));
-      
-      // Only set isAnalyzing to false if no more active analyses
-      setIsAnalyzing(prevIsAnalyzing => {
-        // If this was the last active analysis, set to false
-        const shouldSetToFalse = activeAnalysisCount <= 1;
-        if (shouldSetToFalse) {
-          
-          return false;
+      // Decrement the active analysis counter and update isAnalyzing based on the new count
+      setActiveAnalysisCount(count => {
+        const newCount = Math.max(0, count - 1);
+        
+        // Set isAnalyzing to false if this was the last active analysis
+        if (newCount === 0) {
+          setIsAnalyzing(false);
         }
-        return prevIsAnalyzing;
+        
+        return newCount;
       });
     }
   };
@@ -692,18 +690,16 @@ export default function App() {
           };
         });
         
-        // Decrement the active analysis counter
-        setActiveAnalysisCount(count => Math.max(0, count - 1));
-        
-        // Only set isAnalyzing to false if this was the last active analysis
-        setIsAnalyzing(prevIsAnalyzing => {
-          // Check current active analysis count (will be 1 if this is the last one)
-          const shouldSetToFalse = activeAnalysisCount <= 1;
-          if (shouldSetToFalse) {
-            
-            return false;
+        // Decrement the active analysis counter and update isAnalyzing based on the new count
+        setActiveAnalysisCount(count => {
+          const newCount = Math.max(0, count - 1);
+          
+          // Set isAnalyzing to false if this was the last active analysis
+          if (newCount === 0) {
+            setIsAnalyzing(false);
           }
-          return prevIsAnalyzing;
+          
+          return newCount;
         });
         
         // Handle failed analyses properly

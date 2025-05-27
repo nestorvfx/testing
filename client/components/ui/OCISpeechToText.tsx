@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 
 interface OCISpeechToTextProps {
   serverUrl?: string;
