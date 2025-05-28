@@ -9,7 +9,6 @@
 
 ### Web App
 - Visit: https://nestorvfx.github.io/PhotoAndAnalyze/
-- Note: This is a private repository. Contact the owner for access.
 
 ---
 
