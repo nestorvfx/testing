@@ -1,5 +1,18 @@
 # PhotoAndAnalyze
 
+## How to Use
+
+### Android App
+1. Download: [Photo And Analyze.apk](releases/Photo%20And%20Analyze.apk)
+2. On your Android device, enable "Install from Unknown Sources" in Settings → Security
+3. Install the APK and grant camera, microphone, and storage permissions
+
+### Web App
+- Visit: https://nestorvfx.github.io/PhotoAndAnalyze/
+- Note: This is a private repository. Contact the owner for access.
+
+---
+
 A React Native app that combines camera functionality with AI-powered image analysis and voice recognition. Take photos and receive instant analysis using Perplexity AI with optional voice commands powered by Oracle Cloud Speech services.
 
 ## Features

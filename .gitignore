@@ -42,8 +42,12 @@ android/build/
 android/.gradle/
 android/app/release/
 android/app/debug/
-*.apk
-*.aab
+# Exclude APKs from build folders but allow release APKs
+client/android/**/*.apk
+client/android/**/*.aab
+# Allow release APKs in releases folder
+!releases/*.apk
+!releases/*.aab
 
 # iOS build files (for future reference)
 ios/build/
