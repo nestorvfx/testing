@@ -36,6 +36,19 @@ dist/
 .expo/
 .next/
 
+# Android build files
+android/app/build/
+android/build/
+android/.gradle/
+android/app/release/
+android/app/debug/
+*.apk
+*.aab
+
+# iOS build files (for future reference)
+ios/build/
+ios/DerivedData/
+
 # OS generated files
 .DS_Store
 .DS_Store?

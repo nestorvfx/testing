@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "PhotoAndAnalyze",
-    "slug": "PhotoAndAnalyze",
+    "slug": "PerplexitySceneCapture",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/icon.png",
@@ -44,7 +44,8 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "package": "com.nestorvfx.PhotoAndAnalyze"
     },
@@ -55,6 +56,7 @@
       "eas": {
         "projectId": "a8f53beb-4f41-4e59-a748-99c6c0dd59bc"
       }
-    }
+    },
+    "owner": "nestorvfx"
   }
 }
