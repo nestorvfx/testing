@@ -50,7 +50,15 @@
       "package": "com.nestorvfx.PhotoAndAnalyze"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "static",
+      "name": "PhotoAndAnalyze",
+      "build": {
+        "babel": {
+          "include": ["@expo/vector-icons"]
+        }
+      }
     },
     "extra": {
       "eas": {
