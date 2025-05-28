@@ -7,13 +7,80 @@ import {
   Modal, 
   StyleSheet, 
   ActivityIndicator, 
-  ScrollView,
   Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
+// Header Component
+const ModalHeader = ({ onClose }) => (
+  <View style={styles.modalHeader}>
+    <Text style={styles.modalTitle}>Deep Analysis</Text>
+    <TouchableOpacity 
+      onPress={onClose} 
+      style={styles.closeButton} 
+      accessibilityLabel="Close"
+    >
+      <Ionicons name="close" size={24} color="#666" />
+    </TouchableOpacity>
+  </View>
+);
+
+// Body Component
+const ModalBody = ({ prompt, setPrompt, isLoading, captureCount }) => (
+  <View style={styles.modalBody}>
+    <Text style={styles.promptLabel}>
+      Write a custom prompt for analyzing {captureCount} images together:
+    </Text>
+    <TextInput
+      style={styles.promptInput}
+      placeholder="e.g., Analyze the historical significance of these locations..."
+      placeholderTextColor="#999"
+      multiline={true}
+      numberOfLines={4}
+      value={prompt}
+      onChangeText={setPrompt}
+      editable={!isLoading}
+      accessibilityLabel="Prompt input"
+    />
+    <Text style={styles.helpText}>
+      This will use Perplexity's deep research model to analyze all your images together as a collection.
+    </Text>
+  </View>
+);
+
+// Footer Component
+const ModalFooter = ({ onClose, onSubmit, isLoading, captureCount }) => (
+  <View style={styles.modalFooter}>
+    <TouchableOpacity 
+      style={[styles.button, styles.cancelButton]}
+      onPress={onClose}
+      disabled={isLoading}
+      accessibilityLabel="Cancel"
+    >
+      <Text style={styles.buttonText}>Cancel</Text>
+    </TouchableOpacity>
+    <TouchableOpacity 
+      style={[
+        styles.button, 
+        styles.submitButton,
+        (isLoading || captureCount === 0) ? styles.disabledButton : null
+      ]}
+      onPress={onSubmit}
+      disabled={isLoading || captureCount === 0}
+      accessibilityLabel="Submit analysis"
+    >
+      {isLoading ? (
+        <ActivityIndicator color="#fff" size="small" />
+      ) : (
+        <Text style={styles.buttonText}>Analyze</Text>
+      )}
+    </TouchableOpacity>
+  </View>
+);
+
+// Main Component
 const DeepAnalysisDialog = ({ 
   visible, 
   onClose, 
@@ -36,59 +103,19 @@ const DeepAnalysisDialog = ({
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Deep Analysis</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#666" />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.modalBody}>
-            <Text style={styles.promptLabel}>
-              Write a custom prompt for analyzing {captureCount} images together:
-            </Text>
-            
-            <TextInput
-              style={styles.promptInput}
-              placeholder="e.g., Analyze the historical significance of these locations..."
-              placeholderTextColor="#999"
-              multiline={true}
-              numberOfLines={4}
-              value={prompt}
-              onChangeText={setPrompt}
-              editable={!isLoading}
-            />
-            
-            <Text style={styles.helpText}>
-              This will use Perplexity's deep research model to analyze all your images together as a collection.
-            </Text>
-          </View>
-          
-          <View style={styles.modalFooter}>
-            <TouchableOpacity 
-              style={[styles.button, styles.cancelButton]}
-              onPress={onClose}
-              disabled={isLoading}
-            >
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
-              <TouchableOpacity 
-              style={[
-                styles.button, 
-                styles.submitButton,
-                (isLoading || captureCount === 0) ? styles.disabledButton : null
-              ]}
-              onPress={handleSubmit}
-              disabled={isLoading || captureCount === 0}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.buttonText}>Analyze</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-          
+          <ModalHeader onClose={onClose} />
+          <ModalBody 
+            prompt={prompt} 
+            setPrompt={setPrompt} 
+            isLoading={isLoading} 
+            captureCount={captureCount} 
+          />
+          <ModalFooter 
+            onClose={onClose} 
+            onSubmit={handleSubmit} 
+            isLoading={isLoading} 
+            captureCount={captureCount} 
+          />
           {captureCount === 0 && (
             <Text style={styles.errorText}>
               You need at least one captured image to perform analysis.

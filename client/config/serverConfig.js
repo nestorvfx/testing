@@ -8,7 +8,7 @@
 import { Platform } from 'react-native';
 
 // 🔧 CONFIGURATION - Updated for Oracle Cloud deployment (Port 8080)
-const PRODUCTION_SERVER_URL = 'http://143.47.180.235:8080'; // Oracle Cloud server IP with working port
+const PRODUCTION_SERVER_URL = 'http://143.47.180.235:8080'; // Oracle Cloud server IP with nginx proxy
 
 // Development server URLs
 const DEVELOPMENT_URLS = {

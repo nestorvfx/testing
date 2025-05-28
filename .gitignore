@@ -82,3 +82,13 @@ jspm_packages/
 # Backup files
 *-backup/
 *.backup
+
+# Deployment scripts and configuration files
+# Track nginx configs since they're needed for deployment
+# But ignore any configs with sensitive info
+*.conf
+**/nginx-*.conf.local
+
+# Deployment logs and temporary files
+deploy-*.log
+deployment-*.log

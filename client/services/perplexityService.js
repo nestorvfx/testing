@@ -42,8 +42,6 @@ export const registerAnalysisEventHandlers = (handlers = {}) => {
   Object.assign(analysisEventHandlers, handlers);
 };
 
-const BATCH_SIZE = 5;
-
 /**
  * Processes images through Perplexity API for analysis
  * @param {Array} images - Array of image objects to analyze
@@ -60,7 +58,8 @@ export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
     if (images.length === 0) {
       return [];
     }
-      // Validate server connection before processing
+    
+    // Validate server connection before processing
     await validateServerConnection();
     
     // CRITICAL: Use a copy of images to avoid modifying the original array
@@ -82,7 +81,8 @@ export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
     const failedAnalyses = [];
     // Track successfully processed images
     const processedImages = [];
-      // Create batches of images to process
+    
+    // Create batches of images to process
     const imageBatches = [];
     // Process smaller batches (5 at a time) for more reliability
     const RELIABLE_BATCH_SIZE = 5;
@@ -98,8 +98,8 @@ export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
       if (batchIndex > 0) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
-
-        try {
+      
+      try {
         // Prepare all images in batch
         const preparedBatch = await Promise.all(
           batch.map(async (image) => {
@@ -115,23 +115,27 @@ export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
         const base64Images = preparedBatch.map(item => item.base64Image);
         const customPrompts = preparedBatch.map(item => item.customPrompt);
         
-        
-        
-        // Send all images in batch to Perplexity API at once
+        // Send all images in batch to Perplexity API at once through the server
         const batchAnalysisResults = await sendToPerplexityAPI(base64Images, customPrompts);
         
         // Process batch results and update images
         preparedBatch.forEach((item, index) => {
-          const analysis = batchAnalysisResults[index];
+          const result = batchAnalysisResults[index];
+          
+          // Use parsed data from server if available, otherwise use raw data
+          const analysis = result.parsed || {
+            title: "Analysis Failed",
+            description: "Failed to parse analysis results",
+            keyPoints: ["Server returned invalid data"],
+            reference: "N/A"
+          };
+          
           const analyzedImage = {
             ...item.image,
             analyzed: true,
             analysis: analysis,
-            analysisDate: new Date().toISOString()          };
-          
-          
-          
-          
+            analysisDate: new Date().toISOString()
+          };
           
           // Notify that an image was analyzed
           if (analysisEventHandlers.onImageAnalyzed) {
@@ -140,19 +144,18 @@ export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
           
           // Add to processed list
           processedImages.push(analyzedImage);
-        });      } catch (error) {
+        });
+      } catch (error) {
         console.error(`Failed to analyze batch:`, error);
         
         // Mark all images in batch as failed
-        batch.forEach(image => {          // Mark image as failed but NOT analyzed
+        batch.forEach(image => {
+          // Mark image as failed but NOT analyzed
           const failedImage = {
             ...image,
             analyzed: false,
             failedReason: error.message || "Unknown error"
           };
-          
-          
-          
           
           // Track failed analyses
           failedAnalyses.push(failedImage);
@@ -164,8 +167,6 @@ export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
         });
       }
     }
-    
-    
     
     // After all processing is done, call the completion handler
     if (analysisEventHandlers.onAnalysisComplete) {
@@ -305,9 +306,6 @@ const fetchImageAsBase64 = async (uri) => {
   try {
     const response = await fetch(uri, {
       mode: 'cors', // Add CORS mode for web compatibility
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-      }
     });
     
     if (!response.ok) {
@@ -334,7 +332,7 @@ const fetchImageAsBase64 = async (uri) => {
 };
 
 /**
- * Send prepared images to Perplexity API and get analysis
+ * Send prepared images to Perplexity API through server proxy and get analysis
  * @param {string|Array<string>} base64Images - Single Base64 encoded image data URI or array of them
  * @param {string|Array<string>} userPrompts - Optional user prompt(s) for additional context
  * @returns {Promise<object|Array<object>>} - Analysis results for single or multiple images
@@ -364,25 +362,7 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
       }
 
       const data = await response.json();
-      
-      // Process the batch results and parse each one
-      const results = data.results.map((result, index) => {
-        if (result.error) {
-          return {
-            title: "Analysis Failed",
-            description: "There was an error analyzing this image.",
-            keyPoints: ["API error occurred", result.message || "Unknown error"],
-            reference: "N/A"
-          };
-        }
-        
-        // Parse the server response
-        const analysisText = result.choices?.[0]?.message?.content || "No analysis available";
-        const citations = result.citations || [];
-        return parseAnalysisText(analysisText, citations);
-      });
-      
-      return results;
+      return data.results;
       
     } else {
       // Use single image endpoint for individual analysis
@@ -406,177 +386,27 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
       }
 
       const data = await response.json();
-      
-      // Parse the server response
-      const analysisText = data.choices?.[0]?.message?.content || "No analysis available";
-      const citations = data.citations || [];
-      return parseAnalysisText(analysisText, citations);
+      return data;
     }
     
   } catch (error) {
     console.error('Secure Perplexity API error:', error);
+    
     const errorAnalysis = {
-      title: "Analysis Failed",
-      description: "There was an error analyzing this image.",
-      keyPoints: ["Server error occurred", `Error: ${error.message}`],
-      reference: "N/A"
+      error: true,
+      message: error.message,
+      parsed: {
+        title: "Analysis Failed",
+        description: "There was an error analyzing this image.",
+        keyPoints: ["Server error occurred", `Error: ${error.message}`],
+        reference: "N/A"
+      }
     };
     
     // Return single error or array of errors based on input type
     return Array.isArray(base64Images) ? 
       Array(base64Images.length).fill(errorAnalysis) : errorAnalysis;
   }
-};
-
-/**
- * Parse the text analysis into structured data
- * @param {string} text - Raw analysis text
- * @param {Array} citations - Array of citation URLs from API response
- * @returns {object} - Structured analysis data
- */
-const parseAnalysisText = (text, citations = []) => {
-  try {
-    // Remove <think> blocks - often included in deep analysis responses
-    let cleanText = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    
-    // Remove citation markers like [1][2] from the text
-    cleanText = cleanText.replace(/\[\d+\]/g, '');
-    
-    // For markdown formatted headings, convert to standard format
-    cleanText = cleanText.replace(/# ([^\n]+)/g, 'Title: $1');
-    cleanText = cleanText.replace(/## ([^\n]+)/g, '$1:');
-    
-    // Extract title - try various patterns
-    let title = cleanText.match(/Title: (.*?)(?:\n|$)/i)?.[1] || 
-               cleanText.match(/^(.*?)(?:\n|$)/)?.[1] || 
-               "Analysis Results";
-    
-    // If title is too long, it might be part of free-form text - truncate it
-    if (title.length > 100) {
-      title = title.substring(0, 97) + "...";
-    }
-    
-    // Extract description - try multiple patterns
-    let description = cleanText.match(/Description: (.*?)(?:\nKey Points|\n\n|$)/is)?.[1]?.trim() || 
-                     cleanText.match(/Description\n(.*?)(?:\nKey Points|\n\n|$)/is)?.[1]?.trim() || 
-                     cleanText.match(/^(?:(?!Title|Key Points|Reference).)*$/im)?.[0]?.trim() || "";
-    
-    // If no description found but we have text, provide a fallback
-    if (!description && cleanText.length > 0) {
-      const firstParagraph = cleanText.split('\n\n')[0];
-      if (firstParagraph && !firstParagraph.includes('Title:')) {
-        description = firstParagraph.trim();
-      } else {
-        // Get first substantial paragraph as description
-        const paragraphs = cleanText.split('\n\n').filter(p => 
-          p.length > 50 && 
-          !p.includes('Title:') && 
-          !p.includes('Key Points:') && 
-          !p.includes('Reference:')
-        );
-        description = paragraphs[0] || "Analysis provided by Perplexity AI";
-      }
-    }
-    
-    // Extract key points as an array - try multiple patterns
-    let keyPointsSection = cleanText.match(/Key Points:(.*?)(?:\nReference:|\n\n|$)/is)?.[1] || 
-                          cleanText.match(/Key Points\n(.*?)(?:\nReference:|\n\n|$)/is)?.[1] || "";
-    
-    let keyPoints = [];
-    if (keyPointsSection) {
-      keyPoints = keyPointsSection
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.startsWith('-') || line.startsWith('•') || line.startsWith('*'))
-        .map(line => line.replace(/^[-•*]\s*/, ''))
-        .filter(Boolean);
-    }
-    
-    // If no key points found but we have paragraph breaks, make paragraphs into key points
-    if (keyPoints.length === 0) {
-      const potentialPoints = cleanText
-        .split('\n\n')
-        .filter(p => 
-          p.length > 20 && 
-          !p.includes('Title:') && 
-          !p.includes('Description:') && 
-          !p.includes('Key Points:') && 
-          !p.includes('Reference:')
-        )
-        .slice(1); // Skip first paragraph as it's likely the description
-        
-      if (potentialPoints.length > 0) {
-        keyPoints = potentialPoints.map(p => p.replace(/^\s*[-•*]\s*/, '').trim());
-      }
-    }
-    
-    // Get reference text or use fallback
-    let referenceText = cleanText.match(/Reference: (.*?)(?:\n|$)/i)?.[1] || 
-                       cleanText.match(/References\n(.*?)(?:\n##|\n\n|$)/is)?.[1]?.trim() || 
-                       "Source: Perplexity AI analysis";
-    
-    // Take just the top 2 citations for the references
-    const topCitations = citations.slice(0, 2);
-    
-    const result = {
-      title,
-      description,
-      keyPoints: keyPoints.length > 0 ? keyPoints : generateFallbackKeyPoints(description),
-      reference: referenceText,
-      citations: topCitations
-    };
-    
-    return result;
-  } catch (error) {
-    console.error('Error parsing analysis text:', error);
-    return generateFallbackAnalysis(text);
-  }
-};
-
-/**
- * Generate fallback key points from description
- * @param {string} description - Description text
- * @returns {Array} - Array of generated key points
- */
-const generateFallbackKeyPoints = (description) => {
-  if (!description || description.length < 20) {
-    return ["No detailed analysis available"];
-  }
-  
-  // Split into sentences and try to extract 3-5 key points
-  const sentences = description.match(/[^.!?]+[.!?]+/g) || [];
-  
-  if (sentences.length <= 1) {
-    return [description];
-  } else if (sentences.length <= 3) {
-    return sentences.map(s => s.trim());
-  } else {
-    // Pick sentences distributed throughout the text
-    const step = Math.floor(sentences.length / 3);
-    return [
-      sentences[0].trim(),
-      sentences[Math.min(step, sentences.length - 1)].trim(),
-      sentences[Math.min(2 * step, sentences.length - 1)].trim()
-    ];
-  }
-};
-
-/**
- * Generate a fallback analysis when parsing fails
- * @param {string} text - Original analysis text
- * @returns {object} - Basic analysis object
- */
-const generateFallbackAnalysis = (text) => {
-  // Extract the first 200 characters for the description
-  const shortText = text.substring(0, 200) + (text.length > 200 ? "..." : "");
-  
-  return {
-    title: "Analysis Results",
-    description: shortText,
-    keyPoints: ["The complete analysis is available but couldn't be structured automatically"],
-    reference: "Source: Perplexity AI",
-    citations: []
-  };
 };
 
 /**
@@ -600,34 +430,9 @@ export const performDeepAnalysis = async (images, userPrompt = "") => {
         const analysis = image.analysis;
         previousAnalysisText += `\n        --- Analysis for Image ${index + 1} ---\n        Title: ${analysis.title || 'N/A'}\n        Description: ${analysis.description || 'N/A'}\n        Key Points: ${analysis.keyPoints ? analysis.keyPoints.map(p => `- ${p}`).join('\n') : 'N/A'}\n        -----------------------------\n        `;
       }
-      // No 'else' block - skip images without analysis
     });
 
-    // Conditionally add the previous analysis section to the prompt
-    const analysisContext = hasPreviousAnalysis ? `\n        --- Previous Analysis Results ---${previousAnalysisText}\n        --- End of Previous Analysis ---\n        Guide to follow:\n        You are given a series of photos (provided below) and potentially their previous individual analyses (provided above).\n        Consider all images together as a collection, using any previous analyses as context.\n        Analyze these images and information in combination with the 'Main Task' as a group, looking for patterns, connections, or themes with insightful answer on the given prompt/images.` : `\n        Guide to follow:\n        You are given a series of photos (provided below).\n        Consider all images together as a collection.\n        Analyze these images in order to answer 'Main Prompt' as a group, looking for patterns, connections, or themes with insightful answer on the given prompt/images.`;
-
-    // Build a combined message with all images and previous analysis
-    const content = [
-      {
-        type: "text",
-        text: userPrompt ? 'Main Prompt (most important): '+userPrompt+`\n Previous information (use to gain insights in order to complete Main prompt accordingly):\n
-        ${analysisContext}`: `Find connection and provide insightful analysis\n${analysisContext}
-        \n\nPresent your findings in the following structured format:
-        \n\nTitle: [A concise title that describes the main theme or connection]
-        \nDescription: [A detailed paragraph providing a comprehensive analysis of what these images represent as a collection, considering both the images and previous analyses]
-        \nKey Points:
-        \n- [Important insight or connection 1]
-        \n- [Important insight or connection 2]
-        \n- [Important insight or connection 3]
-        \n- [Add more key points as necessary]
-        \nReference: [References or sources for your analysis]`
-      },
-      ...base64Images.map(base64 => ({
-        type: "image_url",
-        image_url: { url: base64 }
-      }))
-    ];
-      // Use secure server endpoint for deep analysis
+    // Use secure server endpoint for deep analysis
     const response = await fetch(DEEP_ANALYZE_URL, {
       method: 'POST',
       headers: {
@@ -647,12 +452,16 @@ export const performDeepAnalysis = async (images, userPrompt = "") => {
     }
     
     const data = await response.json();
-    const analysisText = data.choices?.[0]?.message?.content || "No analysis available";
     
-    // Parse the response the same way as regular analysis
-    const citations = data.citations || [];
-    const parsedAnalysis = parseAnalysisText(analysisText, citations);
-      // Add metadata about this analysis
+    // Use the parsed data from the server
+    const parsedAnalysis = data.parsed || {
+      title: "Deep Analysis Failed",
+      description: "Failed to parse analysis results",
+      keyPoints: ["Server returned invalid data"],
+      reference: "N/A"
+    };
+    
+    // Add metadata about this analysis
     return {
       ...parsedAnalysis,
       timestamp: new Date().toISOString(),

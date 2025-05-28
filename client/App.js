@@ -14,7 +14,6 @@ import AnalyzeButton from './components/ui/AnalyzeButton';
 import DeepAnalysisButton from './components/ui/DeepAnalysisButton';
 import DeepAnalysisResults from './components/ui/DeepAnalysisResults';
 import NewAnalysisPromptModal from './components/ui/NewAnalysisPromptModal';
-import AnalysisStatusIndicator from './components/ui/AnalysisStatusIndicator';
 // Import the new components
 import VoiceButton from './components/ui/VoiceButton';
 import ImmediateAnalysisButton from './components/ui/ImmediateAnalysisButton';
@@ -89,13 +88,7 @@ export default function App() {
   // State to track which image URIs have been sent for analysis
   const [imagesSentForAnalysis, setImagesSentForAnalysis] = useState(new Set());
   
-  // Analysis session tracking for the indicator
-  const [analysisSession, setAnalysisSession] = useState({
-    active: false,
-    startedAt: null,
-    totalImagesInSession: 0,
-    analyzedImagesInSession: 0,
-  });
+
   
   // Global button disable tracking - helps prevent multiple captures
   const [captureDisabled, setCaptureDisabled] = useState(false);
@@ -231,22 +224,7 @@ export default function App() {
             // Set the main analyzing flag
             setIsAnalyzing(true);
             
-            // Update analysis session to include this image
-            setAnalysisSession(prevSession => {
-              if (prevSession.active) {
-                return {
-                  ...prevSession,
-                  totalImagesInSession: prevSession.totalImagesInSession + 1
-                };
-              } else {
-                return {
-                  active: true,
-                  startedAt: Date.now(),
-                  totalImagesInSession: 1,
-                  analyzedImagesInSession: 0
-                };
-              }
-            });
+
             
             // Voice-prompted analyses get highest priority
             await analyzeImages([capture], PRIORITY.HIGH);
@@ -321,22 +299,6 @@ export default function App() {
           // Set the main analyzing flag
           setIsAnalyzing(true);
           
-          // Update analysis session to include this image
-          setAnalysisSession(prevSession => {
-            if (prevSession.active) {
-              return {
-                ...prevSession,
-                totalImagesInSession: prevSession.totalImagesInSession + 1
-              };
-            } else {
-              return {
-                active: true,
-                startedAt: Date.now(),
-                totalImagesInSession: 1,
-                analyzedImagesInSession: 0
-              };
-            }
-          });
           
           try {
             // Use PRIORITY.HIGH for immediate analysis
@@ -373,26 +335,6 @@ export default function App() {
       return;
     }
     
-    // Start a new analysis session or update existing one
-    setAnalysisSession(prevSession => {
-      // If there's an active session, add to it, otherwise create new session
-      if (prevSession.active) {
-        
-        return {
-          ...prevSession,
-          totalImagesInSession: prevSession.totalImagesInSession + unanalyzedImages.length
-        };
-      } else {
-        
-        return {
-          active: true,
-          startedAt: Date.now(),
-          totalImagesInSession: unanalyzedImages.length,
-          analyzedImagesInSession: 0
-        };
-      }
-    });
-    
     // Track these images as sent for analysis
     setImagesSentForAnalysis(prevSent => {
       const newSent = new Set(prevSent);
@@ -418,12 +360,6 @@ export default function App() {
         unanalyzedImages.forEach(img => newSent.delete(img.uri));
         return newSent;
       });
-      
-      // Update session state on error
-      setAnalysisSession(prevSession => ({
-        ...prevSession,
-        totalImagesInSession: Math.max(0, prevSession.totalImagesInSession - unanalyzedImages.length)
-      }));
       
       // Decrement the active analysis counter and update isAnalyzing based on the new count
       setActiveAnalysisCount(count => {
@@ -655,41 +591,6 @@ export default function App() {
           
         }
         
-        // Update analysis session state
-        setAnalysisSession(prevSession => {
-          // Calculate new values for the session
-          const successfullyAnalyzed = prevSession.analyzedImagesInSession + updatedImages.length;
-          const newTotalImages = prevSession.totalImagesInSession - failedAnalyses.length;
-          
-          
-          
-          
-          // Determine if all images in the session are now analyzed
-          const isSessionComplete = successfullyAnalyzed >= newTotalImages;
-          
-          // If session is complete, clean it up after a delay
-          if (isSessionComplete) {
-            
-            // Schedule session reset after showing the complete state for a moment
-            setTimeout(() => {
-              setAnalysisSession({
-                active: false,
-                startedAt: null,
-                totalImagesInSession: 0,
-                analyzedImagesInSession: 0
-              });
-              
-            }, 2000);
-          }
-          
-          return {
-            ...prevSession,
-            active: true, // Keep the session active
-            analyzedImagesInSession: successfullyAnalyzed,
-            totalImagesInSession: newTotalImages
-          };
-        });
-        
         // Decrement the active analysis counter and update isAnalyzing based on the new count
         setActiveAnalysisCount(count => {
           const newCount = Math.max(0, count - 1);
@@ -905,11 +806,7 @@ export default function App() {
         />
       )}
       
-      {/* Analysis status indicator */}
-      <AnalysisStatusIndicator 
-        analysisSession={analysisSession}
-        analysisInProgress={isAnalyzing}
-      />
+
       
       {/* Deep Analysis Button */}
       {captures.length > 0 && !isCardsExpanded && (

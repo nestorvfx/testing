@@ -8,6 +8,30 @@ import * as path from "path";
 import * as dotenv from "dotenv";
 import { loadOCIConfig, hasPlaceholderValues } from "./utils/config";
 
+// Define types for Perplexity API responses
+interface PerplexityResponse {
+  choices?: {
+    message?: {
+      content?: string;
+    };
+  }[];
+  citations?: any[];
+  parsed?: AnalysisResult;
+  error?: boolean;
+  message?: string;
+}
+
+interface AnalysisResult {
+  title: string;
+  description: string;
+  keyPoints: string[];
+  reference: string;
+  citations?: any[];
+  timestamp?: string;
+  imageCount?: number;
+  customPrompt?: string | null;
+}
+
 // Load environment variables from .env file
 dotenv.config();
 
@@ -36,7 +60,7 @@ const validatePerplexityConfig = () => {
 
 const perplexityEnabled = validatePerplexityConfig();
 
-// CORS configuration - Updated for production
+// CORS configuration - Fixed for production and to prevent multiple headers
 const allowedOrigins = [
   'http://localhost:3000', 
   'http://localhost:3001', 
@@ -46,20 +70,24 @@ const allowedOrigins = [
   'http://localhost:19006',
   'http://192.168.8.101:8081',
   'http://192.168.8.101:19006',
-  /^http:\/\/192\.168\.8\.\d+:\d+$/,
-  // Add production domains
   ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
-  ...(process.env.PRODUCTION_DOMAIN ? [process.env.PRODUCTION_DOMAIN] : []),
-  // Allow any HTTP/HTTPS origin for production mobile apps
-  /^https?:\/\/.+$/
+  ...(process.env.PRODUCTION_DOMAIN ? [process.env.PRODUCTION_DOMAIN] : [])
 ];
 
-app.use(cors({
-  origin: allowedOrigins,
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+// CORS configuration - Disabled since nginx proxy handles CORS
+// app.use(cors({
+//   origin: function(origin, callback) {
+//     // Allow requests with no origin (like mobile apps or curl requests)
+//     if (!origin) return callback(null, true);
+//     
+//     // For simplicity, use * for all origins in production
+//     // This is the safest approach to avoid multiple header issues
+//     callback(null, '*');
+//   },
+//   methods: ['GET', 'POST', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization'],
+//   credentials: true
+// }));
 
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static(__dirname)); // Serve static files
@@ -145,7 +173,8 @@ app.get("/authenticate", async (req: Request, res: Response) => {
     });
     
     // Return the complete token object (contains token, sessionId, compartmentId)
-    res.json(tokenResponse);  } catch (error) {
+    res.json(tokenResponse);
+  } catch (error) {
     console.error("Authentication failed:", error);
     res.status(401).json({ 
       error: error instanceof Error ? error.message : String(error),
@@ -262,7 +291,15 @@ app.post("/api/perplexity/analyze", async (req: Request, res: Response) => {
       });
     }
 
-    const data = await response.json();
+    const data = await response.json() as PerplexityResponse;
+    
+    // Parse the response into structured format for easier client handling
+    const analysisText = data.choices?.[0]?.message?.content || "No analysis available";
+    const citations = data.citations || [];
+    
+    // Add parsed data to the response
+    data.parsed = parseAnalysisText(analysisText, citations);
+    
     res.json(data);
 
   } catch (error) {
@@ -303,7 +340,7 @@ app.post("/api/perplexity/analyze-batch", async (req: Request, res: Response) =>
     }
 
     // Process each image with rate limiting
-    const results = [];
+    const results: PerplexityResponse[] = [];
     for (let i = 0; i < base64Images.length; i++) {
       const base64Image = base64Images[i];
       const userPrompt = userPrompts[i] || userPrompts[0] || "";
@@ -339,7 +376,9 @@ app.post("/api/perplexity/analyze-batch", async (req: Request, res: Response) =>
             }
           ],
           stream: false
-        };        const response = await fetch(perplexityApiUrl, {
+        };
+        
+        const response = await fetch(perplexityApiUrl, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${perplexityApiKey}`,
@@ -353,13 +392,26 @@ app.post("/api/perplexity/analyze-batch", async (req: Request, res: Response) =>
           throw new Error(`API request failed: ${response.status}`);
         }
 
-        const data = await response.json();
-        results.push(data);      } catch (error) {
+        const data = await response.json() as PerplexityResponse;
+        
+        // Parse the response for easier client handling
+        const analysisText = data.choices?.[0]?.message?.content || "No analysis available";
+        const citations = data.citations || [];
+        data.parsed = parseAnalysisText(analysisText, citations);
+        
+        results.push(data);
+      } catch (error) {
         console.error(`Error analyzing image ${i}:`, error);
         results.push({
           error: true,
-          message: error instanceof Error ? error.message : "Analysis failed"
-        });
+          message: error instanceof Error ? error.message : "Analysis failed",
+          parsed: {
+            title: "Analysis Failed",
+            description: "There was an error analyzing this image.",
+            keyPoints: ["API error occurred", error instanceof Error ? error.message : "Unknown error"],
+            reference: "N/A"
+          }
+        } as PerplexityResponse);
       }
     }
 
@@ -429,7 +481,8 @@ app.post("/api/perplexity/deep-analyze", async (req: Request, res: Response) => 
           content: content
         }
       ],
-      stream: false,      max_tokens: 1500
+      stream: false,
+      max_tokens: 1500
     };
 
     const response = await fetch(perplexityApiUrl, {
@@ -451,7 +504,20 @@ app.post("/api/perplexity/deep-analyze", async (req: Request, res: Response) => 
       });
     }
 
-    const data = await response.json();
+    const data = await response.json() as PerplexityResponse;
+    
+    // Parse the response for easier client handling
+    const analysisText = data.choices?.[0]?.message?.content || "No analysis available";
+    const citations = data.citations || [];
+    data.parsed = parseAnalysisText(analysisText, citations);
+    
+    // Add metadata
+    if (data.parsed) {
+      data.parsed.timestamp = new Date().toISOString();
+      data.parsed.imageCount = base64Images.length;
+      data.parsed.customPrompt = userPrompt || null;
+    }
+    
     res.json(data);
 
   } catch (error) {
@@ -462,6 +528,142 @@ app.post("/api/perplexity/deep-analyze", async (req: Request, res: Response) => 
     });
   }
 });
+
+/**
+ * Parse the text analysis into structured data
+ * @param {string} text - Raw analysis text
+ * @param {Array} citations - Array of citation URLs from API response
+ * @returns {object} - Structured analysis data
+ */
+function parseAnalysisText(text: string, citations: any[] = []): AnalysisResult {
+  try {
+    // Remove <think> blocks - often included in deep analysis responses
+    let cleanText = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    
+    // Remove citation markers like [1][2] from the text
+    cleanText = cleanText.replace(/\[\d+\]/g, '');
+    
+    // For markdown formatted headings, convert to standard format
+    cleanText = cleanText.replace(/# ([^\n]+)/g, 'Title: $1');
+    cleanText = cleanText.replace(/## ([^\n]+)/g, '$1:');
+    
+    // Extract title - try various patterns
+    let title = cleanText.match(/Title: (.*?)(?:\n|$)/i)?.[1] || 
+               cleanText.match(/^(.*?)(?:\n|$)/)?.[1] || 
+               "Analysis Results";
+    
+    // If title is too long, it might be part of free-form text - truncate it
+    if (title.length > 100) {
+      title = title.substring(0, 97) + "...";
+    }
+    
+    // Extract description - try multiple patterns
+    let description = cleanText.match(/Description: (.*?)(?:\nKey Points|\n\n|$)/is)?.[1]?.trim() || 
+                     cleanText.match(/Description\n(.*?)(?:\nKey Points|\n\n|$)/is)?.[1]?.trim() || 
+                     cleanText.match(/^(?:(?!Title|Key Points|Reference).)*$/im)?.[0]?.trim() || "";
+    
+    // If no description found but we have text, provide a fallback
+    if (!description && cleanText.length > 0) {
+      const firstParagraph = cleanText.split('\n\n')[0];
+      if (firstParagraph && !firstParagraph.includes('Title:')) {
+        description = firstParagraph.trim();
+      } else {
+        // Get first substantial paragraph as description
+        const paragraphs = cleanText.split('\n\n').filter((p: string) => 
+          p.length > 50 && 
+          !p.includes('Title:') && 
+          !p.includes('Key Points:') && 
+          !p.includes('Reference:')
+        );
+        description = paragraphs[0] || "Analysis provided by Perplexity AI";
+      }
+    }
+    
+    // Extract key points as an array - try multiple patterns
+    let keyPointsSection = cleanText.match(/Key Points:(.*?)(?:\nReference:|\n\n|$)/is)?.[1] || 
+                          cleanText.match(/Key Points\n(.*?)(?:\nReference:|\n\n|$)/is)?.[1] || "";
+    
+    let keyPoints: string[] = [];
+    if (keyPointsSection) {
+      keyPoints = keyPointsSection
+        .split('\n')
+        .map((line: string) => line.trim())
+        .filter((line: string) => line.startsWith('-') || line.startsWith('•') || line.startsWith('*'))
+        .map((line: string) => line.replace(/^[-•*]\s*/, ''))
+        .filter(Boolean);
+    }
+    
+    // If no key points found but we have paragraph breaks, make paragraphs into key points
+    if (keyPoints.length === 0) {
+      const potentialPoints = cleanText
+        .split('\n\n')
+        .filter((p: string) => 
+          p.length > 20 && 
+          !p.includes('Title:') && 
+          !p.includes('Description:') && 
+          !p.includes('Key Points:') && 
+          !p.includes('Reference:')
+        )
+        .slice(1); // Skip first paragraph as it's likely the description
+        
+      if (potentialPoints.length > 0) {
+        keyPoints = potentialPoints.map((p: string) => p.replace(/^\s*[-•*]\s*/, '').trim());
+      }
+    }
+    
+    // Get reference text or use fallback
+    let referenceText = cleanText.match(/Reference: (.*?)(?:\n|$)/i)?.[1] || 
+                       cleanText.match(/References\n(.*?)(?:\n##|\n\n|$)/is)?.[1]?.trim() || 
+                       "Source: Perplexity AI analysis";
+    
+    // Take just the top 2 citations for the references
+    const topCitations = citations.slice(0, 2);
+    
+    return {
+      title,
+      description,
+      keyPoints: keyPoints.length > 0 ? keyPoints : generateFallbackKeyPoints(description),
+      reference: referenceText,
+      citations: topCitations
+    };
+  } catch (error) {
+    console.error('Error parsing analysis text:', error);
+    return {
+      title: "Analysis Results",
+      description: text.substring(0, 200) + (text.length > 200 ? "..." : ""),
+      keyPoints: ["The complete analysis is available but couldn't be structured automatically"],
+      reference: "Source: Perplexity AI",
+      citations: []
+    };
+  }
+}
+
+/**
+ * Generate fallback key points from description
+ * @param {string} description - Description text
+ * @returns {Array} - Array of generated key points
+ */
+function generateFallbackKeyPoints(description: string): string[] {
+  if (!description || description.length < 20) {
+    return ["No detailed analysis available"];
+  }
+  
+  // Split into sentences and try to extract 3-5 key points
+  const sentences = description.match(/[^.!?]+[.!?]+/g) || [];
+  
+  if (sentences.length <= 1) {
+    return [description];
+  } else if (sentences.length <= 3) {
+    return sentences.map((s: string) => s.trim());  } else {
+    // Pick sentences distributed throughout the text
+    const step = Math.floor(sentences.length / 3);
+    return [
+      sentences[0]?.trim() || "Key point 1",
+      sentences[Math.min(step, sentences.length - 1)]?.trim() || "Key point 2",
+      sentences[Math.min(2 * step, sentences.length - 1)]?.trim() || "Key point 3"
+    ];
+  }
+}
 
 /**
  * Configuration info endpoint (for debugging)
@@ -476,7 +678,7 @@ app.get("/config", (req: Request, res: Response) => {
   });
 });
 
-app.listen(port, '0.0.0.0', () => {
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 OCI Speech Server running at http://0.0.0.0:${port}`);
   console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌍 Region: ${region}`);
@@ -487,7 +689,11 @@ app.listen(port, '0.0.0.0', () => {
   console.log("  GET /authenticate - Get session token");
   console.log("  GET /region - Get configured region");
   console.log("  GET /config - Get configuration info");
-    // Log startup warnings
+  console.log("  POST /api/perplexity/analyze - Analyze single image");
+  console.log("  POST /api/perplexity/analyze-batch - Analyze multiple images");
+  console.log("  POST /api/perplexity/deep-analyze - Analyze image relationships");
+  
+  // Log startup warnings
   if (hasPlaceholderValues(ociConfig)) {
     console.warn("⚠️  WARNING: Some configuration values appear to be placeholders!");
     console.warn("⚠️  Please update your OCI configuration before production use.");
@@ -499,3 +705,8 @@ app.listen(port, '0.0.0.0', () => {
     console.log("🔧 Development mode enabled");
   }
 });
+
+// Configure server timeouts for long-running analysis requests
+server.timeout = 600000; // 10 minutes timeout for requests (deep analysis can be slow)
+server.keepAliveTimeout = 65000; // Keep connections alive
+server.headersTimeout = 66000; // Headers timeout slightly higher than keepAlive

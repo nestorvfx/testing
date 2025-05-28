@@ -6,10 +6,8 @@ import {
   ScrollView, 
   TouchableOpacity, 
   Linking, 
-  Dimensions,
   Platform,
   LayoutAnimation,
-  UIManager,
   ActivityIndicator,
   useWindowDimensions
 } from 'react-native';
@@ -17,21 +15,38 @@ import { Ionicons } from '@expo/vector-icons';
 import AnalysisConnectionView from './AnalysisConnectionView';
 import { enableLayoutAnimations } from '../../utils/layoutAnimationUtil';
 
-// Remove the static dimensions - these won't update on rotation
-// const { width, height } = Dimensions.get('window');
-
 // Enable LayoutAnimation on Android with proper architecture check
 enableLayoutAnimations();
 
-// Individual Analysis Item Component
-const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {
-  // Use LayoutAnimation when toggling expansion
-  const toggleExpand = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    onToggle(index);
-  };
+// Header for AnalysisItem
+const AnalysisHeader = ({ index, title, isExpanded, onToggle }) => (
+  <TouchableOpacity 
+    style={styles.analysisHeader} 
+    onPress={onToggle}
+    activeOpacity={0.7}
+    accessibilityLabel={`Toggle analysis ${index + 1}`}
+  >
+    <View style={styles.headerContent}>
+      <Text style={styles.analysisIndex}>{index + 1}</Text>
+      <Text 
+        style={styles.analysisTitle} 
+        numberOfLines={isExpanded ? 0 : 1}
+      >
+        {title || 'Analysis Result'}
+      </Text>
+    </View>
+    <View style={styles.headerIcons}>
+      <Ionicons 
+        name={isExpanded ? "chevron-up" : "chevron-down"} 
+        size={20} 
+        color="#555" 
+      />
+    </View>
+  </TouchableOpacity>
+);
 
-  // Format the timestamp
+// Body for AnalysisItem
+const AnalysisBody = ({ analysis }) => {
   const formattedDate = new Date(analysis.timestamp).toLocaleString(undefined, {
     year: 'numeric',
     month: 'short',
@@ -39,125 +54,148 @@ const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {
     hour: '2-digit',
     minute: '2-digit'
   });
+
+  return (
+    <View style={styles.analysisContent}>
+      <Text style={styles.timestamp}>
+        {formattedDate}
+        {analysis.customPrompt ? ' • Custom Analysis' : ''}
+      </Text>
+      
+      {analysis.customPrompt && (
+        <View style={styles.promptContainer}>
+          <Text style={styles.promptLabel}>Prompt:</Text>
+          <Text style={styles.promptText}>{analysis.customPrompt}</Text>
+        </View>
+      )}
+      
+      <Text style={styles.description}>{analysis.description}</Text>
+      
+      {analysis.keyPoints && analysis.keyPoints.length > 0 && (
+        <View style={styles.keyPointsContainer}>
+          <Text style={styles.sectionTitle}>Key Points:</Text>
+          {analysis.keyPoints.map((point, idx) => (
+            <View key={idx} style={styles.keyPointItem}>
+              <Text style={styles.bulletPoint}>•</Text>
+              <Text style={styles.keyPointText}>{point}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+      
+      {(analysis.reference || (analysis.citations && analysis.citations.length > 0)) && (
+        <View style={styles.referencesContainer}>
+          <Text style={styles.sectionTitle}>References:</Text>
+          
+          {analysis.reference && analysis.reference !== "N/A" && (
+            <Text style={styles.referenceText}>{analysis.reference}</Text>
+          )}
+          
+          {analysis.citations && analysis.citations.map((url, idx) => (
+            <TouchableOpacity 
+              key={idx}
+              onPress={() => Linking.openURL(url)}
+              style={styles.citationLink}
+            >
+              <Ionicons name="link-outline" size={14} color="#4285F4" />
+              <Text style={styles.citationLinkText}>
+                {url.replace(/^https?:\/\//, '').split('/')[0]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      
+      <View style={styles.metadataContainer}>
+        <Text style={styles.metadataText}>
+          Analysis based on {analysis.imageCount || 'multiple'} {analysis.imageCount === 1 ? 'image' : 'images'}
+        </Text>
+      </View>
+      
+      <AnalysisConnectionView
+        images={analysis.images}
+        customPrompt={analysis.customPrompt}
+      />
+    </View>
+  );
+};
+
+// Individual Analysis Item Component
+const AnalysisItem = ({ analysis, index, isExpanded, onToggle }) => {
+  const toggleExpand = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    onToggle(index);
+  };
+
   return (
     <View style={[
       styles.analysisItem,
       isExpanded ? styles.analysisItemExpanded : null
     ]}>
-      {/* Header - always visible */}
-      <TouchableOpacity 
-        style={styles.analysisHeader} 
-        onPress={toggleExpand}
-        activeOpacity={0.7}
-      >
-        <View style={styles.headerContent}>
-          <Text style={styles.analysisIndex}>{index + 1}</Text>
-          <Text 
-            style={styles.analysisTitle} 
-            numberOfLines={isExpanded ? 0 : 1}
-          >
-            {analysis.title || 'Analysis Result'}
-          </Text>
-        </View>
-        <View style={styles.headerIcons}>
-          {/* Removed the individual add button, keeping only the chevron */}
-          <Ionicons 
-            name={isExpanded ? "chevron-up" : "chevron-down"} 
-            size={20} 
-            color="#555" 
-          />
-        </View>
-      </TouchableOpacity>
-      
-      {/* Body - only visible when expanded */}
-      {isExpanded && (
-        <View style={styles.analysisContent}>          <Text style={styles.timestamp}>
-            {formattedDate}
-            {analysis.customPrompt ? ' • Custom Analysis' : ''}
-          </Text>
-          
-          {analysis.customPrompt && (
-            <View style={styles.promptContainer}>
-              <Text style={styles.promptLabel}>Prompt:</Text>
-              <Text style={styles.promptText}>{analysis.customPrompt}</Text>
-            </View>
-          )}
-          
-          <Text style={styles.description}>{analysis.description}</Text>
-          
-          {analysis.keyPoints && analysis.keyPoints.length > 0 && (
-            <View style={styles.keyPointsContainer}>
-              <Text style={styles.sectionTitle}>Key Points:</Text>
-              {analysis.keyPoints.map((point, idx) => (
-                <View key={idx} style={styles.keyPointItem}>
-                  <Text style={styles.bulletPoint}>•</Text>
-                  <Text style={styles.keyPointText}>{point}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          
-          {(analysis.reference || (analysis.citations && analysis.citations.length > 0)) && (
-            <View style={styles.referencesContainer}>
-              <Text style={styles.sectionTitle}>References:</Text>
-              
-              {analysis.reference && analysis.reference !== "N/A" && (
-                <Text style={styles.referenceText}>{analysis.reference}</Text>
-              )}
-              
-              {analysis.citations && analysis.citations.map((url, idx) => (
-                <TouchableOpacity 
-                  key={idx}
-                  onPress={() => Linking.openURL(url)}
-                  style={styles.citationLink}
-                >
-                  <Ionicons name="link-outline" size={14} color="#4285F4" />
-                  <Text style={styles.citationLinkText}>
-                    {url.replace(/^https?:\/\//, '').split('/')[0]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-            <View style={styles.metadataContainer}>
-            <Text style={styles.metadataText}>
-              Analysis based on {analysis.imageCount || 'multiple'} {analysis.imageCount === 1 ? 'image' : 'images'}
-            </Text>
-          </View>
-          
-          {/* Show the images that are part of this analysis */}
-          <AnalysisConnectionView
-            images={analysis.images}
-            customPrompt={analysis.customPrompt}
-          />
-        </View>
-      )}
+      <AnalysisHeader 
+        index={index} 
+        title={analysis.title} 
+        isExpanded={isExpanded} 
+        onToggle={toggleExpand} 
+      />
+      {isExpanded && <AnalysisBody analysis={analysis} />}
     </View>
   );
 };
 
+// Header for the modal
+const ModalHeader = ({ title, onClose }) => (
+  <View style={styles.header}>
+    <Text style={styles.headerTitle}>{title}</Text>
+    <TouchableOpacity 
+      onPress={onClose} 
+      style={styles.closeButton}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      accessibilityLabel="Close modal"
+    >
+      <Ionicons name="close" size={24} color="white" />
+    </TouchableOpacity>
+  </View>
+);
+
+// Floating Action Button
+const FloatingActionButton = ({ onPress }) => (
+  <TouchableOpacity 
+    style={[
+      styles.fab,
+      Platform.OS === 'web' ? styles.fabWeb : null
+    ]} 
+    onPress={onPress}
+    accessibilityLabel="Add new analysis"
+  >
+    <Ionicons name="add" size={28} color="white" />
+  </TouchableOpacity>
+);
+
+// Loading Overlay
+const LoadingOverlay = () => (
+  <View style={styles.loadingOverlay}>
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#6A1B9A" />
+      <Text style={styles.loadingText}>Analyzing...</Text>
+    </View>
+  </View>
+);
+
 const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis }) => {
   const [expandedIndex, setExpandedIndex] = useState(analyses.length > 0 ? analyses.length - 1 : null);
-  
-  // Use the useWindowDimensions hook instead of static Dimensions
-  // This will update automatically when screen size changes
   const { width, height } = useWindowDimensions();
 
-  // Calculate dimensions based on current screen size and platform
-  // Make it narrower on mobile platforms (Android/iOS) but keep it the same on web
-  const widthMultiplier = Platform.OS === 'web' ? 0.92 : 0.85; // Reduced to 85% for mobile
-  
-  const cardWidth = Math.max(
-    300, // Minimum width in pixels
-    Math.min(width * widthMultiplier, Platform.OS === 'web' ? 600 : 500) // Narrower max-width for mobile
-  );
-  
-  // Adjust max height based on orientation
+  const widthMultiplier = Platform.OS === 'web' ? 0.92 : 0.85;
+  const cardWidth = Math.max(300, Math.min(width * widthMultiplier, Platform.OS === 'web' ? 600 : 500));
   const isLandscape = width > height;
-  const cardMaxHeight = isLandscape ? height * 0.85 : height * 0.8;
-  const cardMinHeight = Math.min(height * 0.6, 400); // Add minimum height
+  const cardMaxHeight = Platform.OS === 'android' 
+    ? (isLandscape ? height * 0.9 : height * 0.85)
+    : (isLandscape ? height * 0.85 : height * 0.8);
+  const cardMinHeight = Platform.OS === 'android' 
+    ? Math.min(height * 0.7, 500) 
+    : Math.min(height * 0.6, 400);
 
-  // When new analysis is added, expand it
   useEffect(() => {
     if (analyses.length > 0) {
       setExpandedIndex(analyses.length - 1);
@@ -170,47 +208,30 @@ const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis 
 
   return (
     <View style={[styles.modalOverlay, { zIndex: 9000 }]}>
-      {/* Backdrop for dismissal */}
       <TouchableOpacity 
         style={[styles.backdrop, { zIndex: 9001 }]}
         activeOpacity={1}
         onPress={onClose}
       />
-      
-      {/* Results container with dynamic size */}      <View style={[
+      <View style={[
         styles.container, 
         { 
           width: cardWidth, 
           maxHeight: cardMaxHeight,
-          minHeight: cardMinHeight, // Add minimum height
-          // Add minimum width constraint
+          minHeight: cardMinHeight,
           minWidth: Math.min(width * 0.85, 300),
-          zIndex: 9002 // Much higher z-index to ensure it's above all other components
+          zIndex: 9002
         },
         Platform.OS === 'web' ? styles.containerWeb : null
       ]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>
-            Deep Analyses ({analyses.length})
-          </Text>
-          <TouchableOpacity 
-            onPress={onClose} 
-            style={styles.closeButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="close" size={24} color="white" />
-          </TouchableOpacity>
-        </View>
-        
-        {/* Content Area */}
+        <ModalHeader title={`Deep Analyses (${analyses.length})`} onClose={onClose} />
         {analyses.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateText}>No analyses yet</Text>
           </View>
         ) : (
           <ScrollView 
-            style={[styles.scrollView, { flex: 1, minHeight: 200 }]} // Ensure ScrollView has height
+            style={[styles.scrollView, { flex: 1, minHeight: 200 }]}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={true}
           >
@@ -226,26 +247,8 @@ const DeepAnalysisResults = ({ analyses, isAnalyzing, onClose, onAddNewAnalysis 
             <View style={{ height: 80 }} />
           </ScrollView>
         )}
-        
-        {/* Loading indicator */}
-        {isAnalyzing && (
-          <View style={styles.loadingOverlay}>
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#6A1B9A" />
-              <Text style={styles.loadingText}>Analyzing...</Text>
-            </View>
-          </View>
-        )}
-        
-        {/* Floating Action Button - the only '+' button we keep */}        <TouchableOpacity 
-          style={[
-            styles.fab,
-            Platform.OS === 'web' ? styles.fabWeb : null
-          ]} 
-          onPress={onAddNewAnalysis}
-        >
-          <Ionicons name="add" size={28} color="white" />
-        </TouchableOpacity>
+        {isAnalyzing && <LoadingOverlay />}
+        <FloatingActionButton onPress={onAddNewAnalysis} />
       </View>
     </View>
   );
@@ -257,9 +260,8 @@ const styles = StyleSheet.create({
     top: 0, left: 0, right: 0, bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 9999, // Extremely high z-index
-    elevation: 9999, // Match with extreme elevation for Android
-    // Force it to be the top layer
+    zIndex: 9999,
+    elevation: 9999,
     ...(Platform.OS === 'android' ? {
       backgroundColor: 'transparent',
       pointerEvents: 'box-none'
@@ -269,9 +271,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.6)',
-    zIndex: 9998, // One less than overlay
+    zIndex: 9998,
     elevation: 9998,
-  },  container: {
+  },
+  container: {
     backgroundColor: '#f0f0f0',
     borderRadius: 16,
     overflow: 'hidden',
@@ -283,23 +286,17 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
       },
       android: {
-        elevation: 9999, // Extreme elevation for Android
+        elevation: 9999,
       },
       web: {
         boxShadow: '0px 4px 12px rgba(0, 0, 0, 0.3)',
       }
     }),
     zIndex: 9999,
-    // Force hardware acceleration on Android
     ...(Platform.OS === 'android' ? {
       backfaceVisibility: 'hidden',
       transform: [{ perspective: 1000 }]
     } : {}),
-    // Add more flexible sizing that will work well on all devices
-    width: '92%',
-    maxWidth: 600,
-    // Add explicit flex properties to ensure proper sizing
-    minHeight: 400, // Minimum height in pixels
     display: 'flex',
     flexDirection: 'column',
   },
@@ -323,13 +320,12 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   scrollView: {
-    flex: 1, // Ensure ScrollView takes available space
-    minHeight: 200, // Minimum height for content
+    flex: 1,
+    minHeight: 200,
   },
   scrollContent: {
     padding: 12,
   },
-  // Analysis Item Styles
   analysisItem: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -486,7 +482,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF6F00',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 1000000, // Even higher
+    elevation: 1000000,
     zIndex: 1000000,
   },
   fabWeb: {
@@ -500,7 +496,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1000001,
     elevation: 1000001,
-  },  loadingContainer: {
+  },
+  loadingContainer: {
     backgroundColor: 'white',
     padding: 20,
     borderRadius: 12,

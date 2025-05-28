@@ -1,24 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Modal, 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  KeyboardAvoidingView, 
+import {
+  Modal,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
   Platform,
-  Dimensions,
   ScrollView,
-  Image
+  Image,
+  useWindowDimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-const { width } = Dimensions.get('window');
 
 const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedImages, setSelectedImages] = useState([]);
+  const { width, height } = useWindowDimensions();
 
   // Reset selected images when modal opens or captures change
   useEffect(() => {
@@ -30,6 +29,7 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
     }
   }, [visible, captures]);
 
+  // Image selection functions
   const toggleImageSelection = (imageUri) => {
     setSelectedImages(prev =>
       prev.includes(imageUri)
@@ -47,6 +47,7 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
 
   const selectNoImages = () => setSelectedImages([]);
 
+  // Handle form submission
   const handleSubmit = () => {
     const validCaptures = captures.filter(
       capture => capture && capture.uri && typeof capture.uri === 'string'
@@ -60,6 +61,50 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
     onClose();
   };
 
+  // Sub-component for rendering each image item
+  const ImageItem = ({ capture, index }) => (
+    <TouchableOpacity
+      style={[
+        styles.imageItem,
+        (index + 1) % 3 === 0 ? styles.imageItemLast : null,
+      ]}
+      onPress={() => toggleImageSelection(capture.uri)}
+      activeOpacity={0.7}
+    >
+      <View
+        style={[
+          styles.imageContainer,
+          selectedImages.includes(capture.uri)
+            ? styles.selectedImageContainer
+            : null,
+        ]}
+      >
+        <Image
+          source={{ uri: capture.uri }}
+          style={styles.imagePreview}
+          resizeMode="cover"
+        />
+        <View
+          style={[
+            styles.checkbox,
+            selectedImages.includes(capture.uri)
+              ? styles.checkedBox
+              : null,
+          ]}
+        >
+          {selectedImages.includes(capture.uri) && (
+            <Ionicons name="checkmark" size={14} color="white" />
+          )}
+        </View>
+        {capture.analyzed && (
+          <View style={styles.analyzedBadge}>
+            <Ionicons name="checkmark-circle" size={12} color="#4CAF50" />
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+
   if (!visible) return null;
 
   return (
@@ -70,8 +115,9 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardAvoidingView}
+        keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}
       >
         <View style={styles.modalOverlay}>
           <TouchableOpacity
@@ -79,13 +125,25 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
             activeOpacity={0.7}
             onPress={onClose}
           />
-          <View style={styles.modalContainer}>
+          <View
+            style={[
+              styles.modalContainer,
+              {
+                width: Math.min(width * 0.9, 450),
+                maxHeight: Platform.OS === 'android' ? height * 0.95 : height * 0.85,
+                minHeight: Platform.OS === 'android' ? Math.min(height * 0.8, 600) : Math.min(height * 0.6, 400)
+              }
+            ]}
+          >
+            {/* Header */}
             <View style={styles.header}>
               <Text style={styles.title}>New Deep Analysis</Text>
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                 <Ionicons name="close" size={22} color="#fff" />
               </TouchableOpacity>
             </View>
+
+            {/* Content */}
             <View style={styles.content}>
               <Text style={styles.subtitle}>
                 Enter a specific prompt to analyze your selected images:
@@ -101,7 +159,14 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
                 autoFocus={true}
                 placeholderTextColor="#999"
               />
-              <View style={styles.imageSelectionContainer}>
+
+              {/* Image Selection */}
+              <View
+                style={[
+                  styles.imageSelectionContainer,
+                  Platform.OS === 'android' ? { flex: 1, minHeight: 200 } : {}
+                ]}
+              >
                 <View style={styles.selectionHeader}>
                   <Text style={styles.selectionTitle}>
                     Select Images ({selectedImages.length}/{captures.length})
@@ -122,7 +187,13 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
                   </View>
                 </View>
                 <ScrollView
-                  style={styles.imageGrid}
+                  style={[
+                    styles.imageGrid,
+                    Platform.OS === 'android' ? { 
+                      maxHeight: Math.min(height * 0.4, 150),
+                      flex: 1 
+                    } : {}
+                  ]}
                   showsVerticalScrollIndicator={true}
                   nestedScrollEnabled={true}
                 >
@@ -142,60 +213,18 @@ const NewAnalysisPromptModal = ({ visible, onClose, onSubmit, captures = [] }) =
                             typeof capture.uri === 'string'
                         )
                         .map((capture, index) => (
-                          <TouchableOpacity
+                          <ImageItem
                             key={capture.uri || `capture-${index}`}
-                            style={[
-                              styles.imageItem,
-                              (index + 1) % 3 === 0 ? styles.imageItemLast : null,
-                            ]}
-                            onPress={() => toggleImageSelection(capture.uri)}
-                            activeOpacity={0.7}
-                          >
-                            <View
-                              style={[
-                                styles.imageContainer,
-                                selectedImages.includes(capture.uri)
-                                  ? styles.selectedImageContainer
-                                  : null,
-                              ]}
-                            >
-                              <Image
-                                source={{ uri: capture.uri }}
-                                style={styles.imagePreview}
-                                resizeMode="cover"
-                              />
-                              <View
-                                style={[
-                                  styles.checkbox,
-                                  selectedImages.includes(capture.uri)
-                                    ? styles.checkedBox
-                                    : null,
-                                ]}
-                              >
-                                {selectedImages.includes(capture.uri) && (
-                                  <Ionicons
-                                    name="checkmark"
-                                    size={14}
-                                    color="white"
-                                  />
-                                )}
-                              </View>
-                              {capture.analyzed && (
-                                <View style={styles.analyzedBadge}>
-                                  <Ionicons
-                                    name="checkmark-circle"
-                                    size={12}
-                                    color="#4CAF50"
-                                  />
-                                </View>
-                              )}
-                            </View>
-                          </TouchableOpacity>
+                            capture={capture}
+                            index={index}
+                          />
                         ))
                     )}
                   </View>
                 </ScrollView>
               </View>
+
+              {/* Buttons */}
               <View style={styles.buttonContainer}>
                 <TouchableOpacity
                   style={[styles.button, styles.cancelButton]}
@@ -245,8 +274,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContainer: {
-    width: Math.min(width * 0.9, 450),
-    maxHeight: '85%',
     backgroundColor: 'white',
     borderRadius: 16,
     overflow: 'hidden',
@@ -270,6 +297,7 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
     flex: 1,
+    minHeight: 0,
   },
   subtitle: {
     fontSize: 14,
@@ -290,6 +318,7 @@ const styles = StyleSheet.create({
   imageSelectionContainer: {
     marginBottom: 20,
     flex: 1,
+    minHeight: 0,
   },
   selectionHeader: {
     flexDirection: 'row',
@@ -318,19 +347,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   imageGrid: {
-    maxHeight: 250, // Increased for better visibility
+    maxHeight: 280,
     borderWidth: 1,
     borderColor: '#eee',
     borderRadius: 8,
     backgroundColor: '#fafafa',
+    flex: 1,
+    minHeight: 0,
   },
   imageGridContent: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     padding: 8,
+    paddingBottom: 12,
   },
   imageItem: {
-    width: '31%', // Slightly adjusted for better spacing
+    width: '31%',
     aspectRatio: 1,
     marginRight: '3.5%',
     marginBottom: 8,
