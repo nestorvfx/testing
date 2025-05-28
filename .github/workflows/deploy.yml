@@ -5,7 +5,7 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN
+# Sets permissions of the GITHUB_TOKEN 
 permissions:
   contents: write
   pages: write
