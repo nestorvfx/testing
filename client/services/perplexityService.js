@@ -2,29 +2,33 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { analysisQueue, PRIORITY } from './analysisQueue';
+import { getServerUrlWithOverride } from '../config/serverConfig';
 
-const API_URL = 'https://api.perplexity.ai/chat/completions';
-const API_KEY = process.env.EXPO_PUBLIC_PERPLEXITY_API_KEY || 'YOUR_PERPLEXITY_API_KEY_HERE';
+// Get server URL for secure API calls
+const SERVER_URL = getServerUrlWithOverride();
+const ANALYZE_URL = `${SERVER_URL}/api/perplexity/analyze`;
+const ANALYZE_BATCH_URL = `${SERVER_URL}/api/perplexity/analyze-batch`;
+const DEEP_ANALYZE_URL = `${SERVER_URL}/api/perplexity/deep-analyze`;
 
-const validateAPIKey = () => {
-  if (!API_KEY || API_KEY === 'YOUR_PERPLEXITY_API_KEY_HERE') {
-    throw new Error('Perplexity API key not configured. Please set EXPO_PUBLIC_PERPLEXITY_API_KEY in your environment variables.');
-  }
-  
-  if (!API_KEY.startsWith('pplx-')) {
-    throw new Error('Invalid Perplexity API key format. Key should start with "pplx-"');
-  }
-  
-  if (API_KEY.length < 40) {
-    throw new Error('Perplexity API key appears to be too short. Please check your configuration.');
+// Server-side validation - no client-side API key needed
+const validateServerConnection = async () => {
+  try {
+    const response = await fetch(`${SERVER_URL}/health`);
+    if (!response.ok) {
+      throw new Error(`Server not available: ${response.status}`);
+    }
+    console.log('✅ Server connection validated for Perplexity API');
+    return true;
+  } catch (error) {
+    console.error('❌ Server connection failed:', error.message);
+    throw new Error('Perplexity analysis service unavailable. Please check server connection.');
   }
 };
 
-try {
-  validateAPIKey();
-} catch (error) {
-  console.error('Perplexity API configuration error:', error.message);
-}
+// Validate server connection on service initialization
+validateServerConnection().catch(error => {
+  console.error('Perplexity service initialization warning:', error.message);
+});
 
 const analysisEventHandlers = {
   onAnalysisStart: null,
@@ -56,9 +60,8 @@ export const analyzeImages = async (images, priority = PRIORITY.NORMAL) => {
     if (images.length === 0) {
       return [];
     }
-    
-    // Validate API key before processing
-    validateAPIKey();
+      // Validate server connection before processing
+    await validateServerConnection();
     
     // CRITICAL: Use a copy of images to avoid modifying the original array
     const imagesSnapshot = [...images];
@@ -340,124 +343,82 @@ const sendToPerplexityAPI = async (base64Images, userPrompts = "") => {
   try {
     // Handle single image case for backward compatibility
     const isMultipleImages = Array.isArray(base64Images);
-    const images = isMultipleImages ? base64Images : [base64Images];
-    const prompts = Array.isArray(userPrompts) ? userPrompts : [userPrompts];
-      // Process each image and get its analysis
-    const analysisResults = await Promise.all(images.map(async (base64Image, index) => {
-      const userPrompt = prompts[index] || prompts[0] || "";
-        if (index > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      
-      
-      const prompt = userPrompt ? 
-        `${userPrompt}\n\nPlease examine this image and provide insights about it. Structure your response with a title, description, and key points.` : 
-        `Examine this image and identify the main subject or notable elements. Provide detailed information in the following format:
-        
-        Title: [A concise title describing the main subject]
-        Description: [A comprehensive overview of what's shown]
-        Key Points:
-        - [Important fact or detail 1]
-        - [Important fact or detail 2]
-        - [Important fact or detail 3]
-        - [Add more key points as necessary]
-        Reference: [Sources for your information]`;
-        
-      const payload = {
-        model: "sonar-pro",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: base64Image } }
-            ]
-          }
-        ],
-        stream: false
-      };
-      
-      let timeoutId;
-      try {
-        // Validate API key before each request
-        if (!API_KEY || API_KEY === 'YOUR_PERPLEXITY_API_KEY_HERE') {
-          throw new Error('API key not configured');
-        }
-        
-        // Create an AbortController to handle timeout
-        const controller = new AbortController();
-        timeoutId = setTimeout(() => controller.abort(), 45000); // 45-second timeout
-
-        const response = await fetch(API_URL, {
-          method: 'POST',          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'User-Agent': 'PhotoAndAnalyze/1.0.0'
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-
-        // Clear timeout if request completes
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          let errorMessage = `API error (${response.status})`;
-          
-          try {
-            const errorData = await response.json();
-            errorMessage += `: ${errorData.error?.message || errorData.message || 'Unknown error'}`;
-          } catch {
-            const errorText = await response.text();
-            errorMessage += `: ${errorText || 'Unknown error'}`;
-          }
-          
-          // Don't expose sensitive information in error messages
-          if (response.status === 401) {
-            throw new Error('Authentication failed. Please check your API key.');
-          } else if (response.status === 429) {
-            throw new Error('Rate limit exceeded. Please try again later.');
-          } else if (response.status >= 500) {
-            throw new Error('Server error. Please try again later.');
-          } else {
-            throw new Error(errorMessage);
-          }
-        }
-
-        const data = await response.json();
-        
-        // Validate response structure
-        if (!data || !data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
-          throw new Error('Invalid response format from API');
-        }
-  
-        
-        // Get the text content from response
-        const analysisText = data.choices[0].message.content;
-
-        // Get citations from the response
-        const citations = data.citations || [];
-
-        // Parse the structured analysis, passing citations
-        return parseAnalysisText(analysisText, citations);
-      } catch (error) {
-        console.error(`[sendToPerplexityAPI] Failed with error: ${error.message}`);
-        throw error;
-      } finally {
-        // Clean up the timeout
-        if (timeoutId) clearTimeout(timeoutId);
-      }
-    }));
     
-    // Return single result for backward compatibility
-    return isMultipleImages ? analysisResults : analysisResults[0];
+    if (isMultipleImages) {
+      // Use batch endpoint for multiple images
+      const response = await fetch(ANALYZE_BATCH_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          base64Images: base64Images,
+          userPrompts: Array.isArray(userPrompts) ? userPrompts : [userPrompts]
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Process the batch results and parse each one
+      const results = data.results.map((result, index) => {
+        if (result.error) {
+          return {
+            title: "Analysis Failed",
+            description: "There was an error analyzing this image.",
+            keyPoints: ["API error occurred", result.message || "Unknown error"],
+            reference: "N/A"
+          };
+        }
+        
+        // Parse the server response
+        const analysisText = result.choices?.[0]?.message?.content || "No analysis available";
+        const citations = result.citations || [];
+        return parseAnalysisText(analysisText, citations);
+      });
+      
+      return results;
+      
+    } else {
+      // Use single image endpoint for individual analysis
+      const userPrompt = Array.isArray(userPrompts) ? userPrompts[0] || "" : userPrompts;
+      
+      const response = await fetch(ANALYZE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          base64Image: base64Images,
+          userPrompt: userPrompt
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Server error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Parse the server response
+      const analysisText = data.choices?.[0]?.message?.content || "No analysis available";
+      const citations = data.citations || [];
+      return parseAnalysisText(analysisText, citations);
+    }
+    
   } catch (error) {
-    console.error('Perplexity API error:', error);
+    console.error('Secure Perplexity API error:', error);
     const errorAnalysis = {
       title: "Analysis Failed",
       description: "There was an error analyzing this image.",
-      keyPoints: ["API error occurred", `Error: ${error.message}`],
+      keyPoints: ["Server error occurred", `Error: ${error.message}`],
       reference: "N/A"
     };
     
@@ -666,37 +627,27 @@ export const performDeepAnalysis = async (images, userPrompt = "") => {
         image_url: { url: base64 }
       }))
     ];
-    
-    // Make API request using deep research model
-    const payload = {
-      model: "sonar-deep-research",
-      messages: [
-        {
-          role: "user",
-          content: content
-        }
-      ],
-      stream: false,
-      max_tokens: 1500
-    };
-    
-    const response = await fetch(API_URL, {
+      // Use secure server endpoint for deep analysis
+    const response = await fetch(DEEP_ANALYZE_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        base64Images: base64Images,
+        userPrompt: userPrompt,
+        previousAnalysisText: hasPreviousAnalysis ? previousAnalysisText : ""
+      })
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API error (${response.status}): ${errorText}`);
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Server error: ${response.status}`);
     }
     
     const data = await response.json();
-    const analysisText = data.choices[0].message.content;
+    const analysisText = data.choices?.[0]?.message?.content || "No analysis available";
     
     // Parse the response the same way as regular analysis
     const citations = data.citations || [];

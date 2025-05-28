@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Platform } from 'react-native';
 import { convertFloat32ToInt16, createAudioContext, requestMicrophoneAccess } from '../utils/audioUtils';
+import { getServerUrlWithOverride } from '../config/serverConfig';
 
 interface SpeechRecognitionResult {
   transcription: string;
@@ -25,7 +26,10 @@ interface TokenResponse {
   compartmentId: string;
 }
 
-export function useSpeechRecognition(serverUrl: string = 'http://localhost:8450'): SpeechRecognitionHook {
+export function useSpeechRecognition(serverUrl?: string): SpeechRecognitionHook {
+  // Use provided serverUrl or get from configuration
+  const effectiveServerUrl = serverUrl || getServerUrlWithOverride();
+  
   const [isConnected, setIsConnected] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -37,12 +41,11 @@ export function useSpeechRecognition(serverUrl: string = 'http://localhost:8450'
   const microphoneRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
   /**
    * Fetch authentication token from server
    */
   const fetchAuthToken = async (): Promise<TokenResponse> => {
-    const response = await fetch(`${serverUrl}/authenticate`);
+    const response = await fetch(`${effectiveServerUrl}/authenticate`);
     if (!response.ok) {
       throw new Error(`Authentication failed: ${response.status}`);
     }
@@ -53,7 +56,7 @@ export function useSpeechRecognition(serverUrl: string = 'http://localhost:8450'
    * Fetch region from server
    */
   const fetchRegion = async (): Promise<string> => {
-    const response = await fetch(`${serverUrl}/region`);
+    const response = await fetch(`${effectiveServerUrl}/region`);
     if (!response.ok) {
       throw new Error(`Failed to fetch region: ${response.status}`);
     }

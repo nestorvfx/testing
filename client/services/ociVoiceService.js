@@ -7,11 +7,10 @@ import { Platform } from 'react-native';
 import { Audio } from 'expo-audio';
 import OCIVoiceNative from '../custom-modules/react-native-oci-voice';
 import { requestMicrophonePermission, checkMicrophonePermission } from '../utils/permissions';
+import { getServerUrlWithOverride } from '../config/serverConfig';
 
-// Configuration for the authentication server
-const AUTH_SERVER_URL = Platform.OS === 'web' 
-  ? 'http://localhost:8450'  // OCI Speech server
-  : 'http://192.168.8.101:8450'; // OCI Speech server - use computer's IP for Android
+// Configuration for the authentication server - now uses environment-aware configuration
+const AUTH_SERVER_URL = getServerUrlWithOverride();
 
 class OCIVoiceService {
   constructor() {

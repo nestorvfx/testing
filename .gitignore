@@ -15,11 +15,20 @@ yarn-error.log*
 **/config.txt
 **/*key*.pem
 **/*key*.p12
+**/*key*.key
+**/*key*.pub
 **/*.pem
 **/*.p12
+**/*.key
+**/*.pub
 **/*secret*
 **/*token*
 **/secrets-to-remove.txt
+
+# SSH and OCI config files
+server/config/
+**/ssh-key*
+**/oci-*
 
 # Build outputs
 build/
